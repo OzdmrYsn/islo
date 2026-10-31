@@ -2509,10 +2509,14 @@ struct DynamicNotchView: View {
             return (-2, localized("Sözler yükleniyor…", "Loading lyrics…"), "")
         case .instrumental:
             return (-3, localized("♪ Enstrümantal", "♪ Instrumental"), "")
-        case .unsynced:
-            return (-4, localized("Bu şarkının zamanlı sözü yok", "No synced lyrics for this song"), "LRCLIB")
+        case .plain(let lines):
+            // Untimed lyrics move along with the song, roughly.
+            let index = LyricsManager.estimatedIndex(lineCount: lines.count, at: time, duration: mediaManager.duration)
+            return (index, lines[index], index + 1 < lines.count ? lines[index + 1] : "")
         case .notFound:
-            return (-5, localized("Söz bulunamadı", "No lyrics found"), "LRCLIB")
+            return (-5, localized("Bu şarkının sözü bulunamadı", "No lyrics for this song"), "LRCLIB")
+        case .unavailable:
+            return (-4, localized("Sözlere şu an ulaşılamıyor", "Lyrics are unavailable right now"), localized("LRCLIB meşgul · birazdan yeniden denenecek", "LRCLIB is busy · trying again shortly"))
         case .idle:
             return (-6, mediaManager.hasActiveTrack ? "♪" : localized("Çalan şarkı yok", "Nothing playing"), "")
         }
