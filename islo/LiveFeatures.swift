@@ -1542,8 +1542,9 @@ final class FolderWatcher {
 
 /// Watches the folder macOS saves screenshots to (System Settings or the
 /// Screenshot app can change it; Desktop by default) for files carrying the
-/// screen-capture tag. macOS writes the file once its floating thumbnail
-/// goes away.
+/// screen-capture tag. While macOS shows its floating thumbnail it holds the
+/// file back until the thumbnail goes away, so `SystemScreenshotThumbnail`
+/// turns that thumbnail off.
 @MainActor
 final class ScreenshotMonitor: ObservableObject {
     static let shared = ScreenshotMonitor()
@@ -1591,19 +1592,20 @@ final class ScreenshotMonitor: ObservableObject {
         }
     }
 
-    /// The tag can land a moment after the file does; look once more.
+    /// The tag can land a moment after the file does; look again for a
+    /// little while.
     private func inspect(_ urls: [URL], attempt: Int) {
         var pending: [URL] = []
         for url in urls {
             if FolderWatcher.hasAttribute("com.apple.metadata:kMDItemIsScreenCapture", at: url) {
                 announce(url)
-            } else if attempt == 0 {
+            } else if attempt < 5 {
                 pending.append(url)
             }
         }
         guard !pending.isEmpty else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            ScreenshotMonitor.shared.inspect(pending, attempt: 1)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            ScreenshotMonitor.shared.inspect(pending, attempt: attempt + 1)
         }
     }
 
@@ -1619,6 +1621,40 @@ final class ScreenshotMonitor: ObservableObject {
                 monitor.revision &+= 1
             }
         }
+    }
+}
+
+/// macOS's floating screenshot thumbnail (the "Show Floating Thumbnail"
+/// option under ⌘⇧5 › Options). While it's on, macOS saves the screenshot
+/// only after the thumbnail goes away, about five seconds later; with it
+/// off the file lands at once and the notch preview takes its place.
+/// islo. turns it back on only if islo. was the one that turned it off.
+enum SystemScreenshotThumbnail {
+    private static let domain = "com.apple.screencapture" as CFString
+    private static let key = "show-thumbnail" as CFString
+    private static let turnedOffKey = "dashboard.screenshots.turnedOffSystemThumbnail"
+
+    static var isShown: Bool {
+        (CFPreferencesCopyAppValue(key, domain) as? Bool) ?? true
+    }
+
+    static func setHidden(_ hidden: Bool) {
+        let defaults = UserDefaults.standard
+        if hidden {
+            guard isShown else { return }
+            write(false)
+            defaults.set(true, forKey: turnedOffKey)
+        } else {
+            guard defaults.bool(forKey: turnedOffKey) else { return }
+            // Without the key macOS shows the thumbnail, as it did before.
+            if !isShown { write(nil) }
+            defaults.removeObject(forKey: turnedOffKey)
+        }
+    }
+
+    private static func write(_ shown: Bool?) {
+        CFPreferencesSetAppValue(key, shown.map { $0 as CFBoolean }, domain)
+        CFPreferencesAppSynchronize(domain)
     }
 }
 

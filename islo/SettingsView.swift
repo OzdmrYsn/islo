@@ -767,6 +767,11 @@ struct SettingsView: View {
                 weatherCityPicker
             }
         case .screenshots:
+            section(text("Seçenekler", "Options")) {
+                row(symbol: "bolt.fill", colors: Tint.purple, title: text("macOS'un küçük önizlemesini kapat", "Turn off macOS's thumbnail"), subtitle: text("Ekran görüntüsü anında kaydedilir ve önizlemesi hemen çentikte açılır. Kapatmazsan macOS köşedeki önizleme kaybolana kadar dosyayı yazmaz. islo. kapalıyken macOS'un önizlemesi geri gelir.", "The screenshot is saved at once and its preview opens in the notch right away. Otherwise macOS holds the file until the corner thumbnail goes away. macOS's thumbnail comes back while islo. isn't running.")) {
+                    switchControl($settings.hideSystemScreenshotThumbnail)
+                }
+            }
             section(text("Klasör", "Folder")) {
                 row(symbol: "folder.fill", colors: Tint.purple, title: text("Ekran görüntülerinin kaydedildiği yer", "Where screenshots are saved"), subtitle: (settings.folderURL(.screenshots).path as NSString).abbreviatingWithTildeInPath) {
                     Button(text("Göster", "Show")) {

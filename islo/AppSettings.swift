@@ -299,6 +299,7 @@ final class AppSettings: ObservableObject {
         static let weatherEnabled = "dashboard.weather.enabled"
         static let hotKeyEnabled = "interaction.hotKey.enabled"
         static let screenshotPreviewEnabled = "dashboard.screenshots.enabled"
+        static let hideSystemScreenshotThumbnail = "dashboard.screenshots.hideSystemThumbnail"
         static let downloadsEnabled = "dashboard.downloads.enabled"
         static let shortcutsEnabled = "dashboard.shortcuts.enabled"
         static let shortcutFavorites = "dashboard.shortcuts.favorites"
@@ -394,6 +395,12 @@ final class AppSettings: ObservableObject {
     /// A preview of each new screenshot under the notch.
     @Published var screenshotPreviewEnabled: Bool {
         didSet { defaults.set(screenshotPreviewEnabled, forKey: Key.screenshotPreviewEnabled) }
+    }
+
+    /// Turn off macOS's floating screenshot thumbnail so the file is saved
+    /// at once and the notch preview opens right away.
+    @Published var hideSystemScreenshotThumbnail: Bool {
+        didSet { defaults.set(hideSystemScreenshotThumbnail, forKey: Key.hideSystemScreenshotThumbnail) }
     }
 
     /// Download progress in the closed notch and a "Downloaded" HUD.
@@ -592,6 +599,7 @@ final class AppSettings: ObservableObject {
         weatherEnabled = Self.bool(forKey: Key.weatherEnabled, defaults: defaults, fallback: true)
         hotKeyEnabled = Self.bool(forKey: Key.hotKeyEnabled, defaults: defaults, fallback: true)
         screenshotPreviewEnabled = Self.bool(forKey: Key.screenshotPreviewEnabled, defaults: defaults, fallback: true)
+        hideSystemScreenshotThumbnail = Self.bool(forKey: Key.hideSystemScreenshotThumbnail, defaults: defaults, fallback: true)
         downloadsEnabled = Self.bool(forKey: Key.downloadsEnabled, defaults: defaults, fallback: true)
         shortcutsEnabled = Self.bool(forKey: Key.shortcutsEnabled, defaults: defaults, fallback: true)
         shortcutFavorites = defaults.stringArray(forKey: Key.shortcutFavorites) ?? []
@@ -679,6 +687,7 @@ final class AppSettings: ObservableObject {
         lyricsEnabled = true
         weatherEnabled = true
         screenshotPreviewEnabled = true
+        hideSystemScreenshotThumbnail = true
         downloadsEnabled = true
         shortcutsEnabled = true
         dashboardKeepAwakeEnabled = true

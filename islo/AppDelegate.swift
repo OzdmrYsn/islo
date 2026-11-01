@@ -89,6 +89,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         notificationMonitor.setEnabled(false)
         keepAwakeManager.setActive(false)
         systemHUDInterceptor.setEnabled(false)
+        // macOS's own thumbnail comes back while islo. isn't running.
+        SystemScreenshotThumbnail.setHidden(false)
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -353,6 +355,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { enabled in ScreenshotMonitor.shared.setEnabled(enabled) }
+            .store(in: &cancellables)
+
+        settings.$screenshotPreviewEnabled
+            .combineLatest(settings.$hideSystemScreenshotThumbnail)
+            .map { $0 && $1 }
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { hides in SystemScreenshotThumbnail.setHidden(hides) }
             .store(in: &cancellables)
 
         settings.$downloadsEnabled
