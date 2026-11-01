@@ -512,8 +512,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let controller = OnboardingWindowController(
             settings: settings,
             onComplete: { [weak self] in
-                self?.onboardingWindowController?.close()
-                self?.onboardingWindowController = nil
+                // The guide flies into the notch, which then opens to say
+                // hello and closes again.
+                self?.onboardingWindowController?.flyIntoNotch {
+                    self?.onboardingWindowController = nil
+                    NotificationCenter.default.post(name: .isloExpand, object: nil)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.8) {
+                        NotificationCenter.default.post(name: .isloCollapse, object: nil)
+                    }
+                }
             }
         )
         onboardingWindowController = controller
@@ -584,6 +591,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // "settings" or "settings:<page>", e.g. "settings:features".
             let page = command.split(separator: ":").dropFirst().first.map(String.init)
             presentSettings(destination: page.flatMap(SettingsDestination.init(rawValue:)))
+        case let command where command.hasPrefix("onboarding"):
+            // "onboarding" or "onboarding:<page 0-4>".
+            showOnboarding()
+            if let page = command.split(separator: ":").dropFirst().first.flatMap({ Int($0) }) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    NotificationCenter.default.post(name: .isloOnboardingPage, object: page)
+                }
+            }
         case let command where command.hasPrefix("feature:"):
             // A feature's details, e.g. "feature:timer".
             presentSettings(destination: nil, feature: String(command.dropFirst("feature:".count)))

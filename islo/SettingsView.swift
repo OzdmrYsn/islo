@@ -94,7 +94,7 @@ private extension Color {
 }
 
 /// Two-colour fills for icon tiles.
-private enum Tint {
+enum Tint {
     static let red = [Color(hex: 0xFF5A50), Color(hex: 0xC9221A)]
     static let indigo = [Color(hex: 0x8A87FF), Color(hex: 0x4B48D6)]
     static let pink = [Color(hex: 0xFF5C93), Color(hex: 0xD3245F)]
@@ -114,7 +114,7 @@ private enum Tint {
 }
 
 /// A rounded, coloured icon tile, like the notch's Shortcuts tiles.
-private struct IconTile: View {
+struct IconTile: View {
     let symbol: String
     let colors: [Color]
     var size: CGFloat = 30
@@ -141,7 +141,7 @@ private struct IconTile: View {
 }
 
 /// Capsule buttons: filled with the theme colour, or a quiet glass one.
-private struct IsloButtonStyle: ButtonStyle {
+struct IsloButtonStyle: ButtonStyle {
     var prominent = false
     var accent: Color
 
@@ -161,7 +161,7 @@ private struct IsloButtonStyle: ButtonStyle {
 }
 
 /// A row of capsule choices, the notch's tab-chip look as a picker.
-private struct ChipPicker<Value: Hashable>: View {
+struct ChipPicker<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(value: Value, title: String)]
     let accent: Color
