@@ -3,6 +3,36 @@
     <channel>
         <title>islo.</title>
         <item>
+            <title>2.4.1</title>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
+<h3>Türkçe</h3>
+<p>islo. 2.4.1 ile ekran görüntüsü çentikte anında açılır.</p>
+<h4>İyileştirmeler</h4>
+<ul>
+<li><b>Ekran görüntüsü artık bekletmiyor:</b> Önizleme, görüntüyü aldığın anda çentikte açılır. Önceden macOS'un köşedeki küçük önizlemesi kaybolana kadar (yaklaşık 5 saniye) bekliyordu.</li>
+<li><b>Tek önizleme:</b> islo. çalışırken macOS'un köşedeki küçük önizlemesini kapatır; görüntü anında kaydedilir. Sürükle, Kopyala, Rafa ekle, Göster ve Sil çentikte hazır.</li>
+<li><b>Yeni seçenek:</b> Ayarlar › Özellikler › Ekran görüntüsü › "macOS'un küçük önizlemesini kapat". Varsayılan olarak açık; kapatırsan eski davranışa dönersin.</li>
+</ul>
+<p><i>islo. kapalıyken macOS'un önizlemesi geri gelir. İzinlerin bu güncellemede korunur.</i></p>
+<h3>English</h3>
+<p>islo. 2.4.1 opens your screenshot in the notch the moment you take it.</p>
+<h4>Improvements</h4>
+<ul>
+<li><b>Screenshots no longer wait:</b> The preview opens in the notch as soon as you take a screenshot. It used to wait until macOS's corner thumbnail went away (about 5 seconds).</li>
+<li><b>One preview:</b> While islo. runs it turns off macOS's corner thumbnail, so the screenshot is saved at once. Drag, Copy, Shelf, Show and Delete are ready in the notch.</li>
+<li><b>New option:</b> Settings › Features › Screenshots › "Turn off macOS's thumbnail". It's on by default; turn it off to go back to the old behaviour.</li>
+</ul>
+<p><i>macOS's thumbnail comes back while islo. isn't running. Your permissions are kept with this update.</i></p>
+]]></description>
+            <pubDate>Sun, 01 Nov 2026 03:51:53 +0300</pubDate>
+            <link>https://github.com/OzdmrYsn/islo</link>
+            <sparkle:version>24</sparkle:version>
+            <sparkle:shortVersionString>2.4.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.4.1/islo-2.4.1.zip" length="6029193" type="application/octet-stream" sparkle:edSignature="iFyFVQOOOC8A3qf9Fv/CHffhVlrB0E1A+JWsODqRUhirehVnSaxiXP6yp7ePt691yarbwctpzYBWDFQLqLZNDQ=="/>
+        </item>
+        <item>
             <title>2.4.0</title>
             <description><![CDATA[
 <style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
@@ -79,46 +109,6 @@
             <sparkle:shortVersionString>2.3.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.3.3/islo-2.3.3.zip" length="5771593" type="application/octet-stream" sparkle:edSignature="0GzTtIVgj/yo7MPSItpETUXjL5R5C8NO+JW17o3Iia12SZs+RkJfFsCe/ZPUxoP1FT/HodnZ5z9c38uKKq9UBw=="/>
-        </item>
-        <item>
-            <title>2.3.2</title>
-            <description><![CDATA[
-<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
-<h3>Türkçe</h3>
-<p>islo. 2.3.2 ile bildirimler yalnızca çentikte görünür.</p>
-<h4>Yeni</h4>
-<ul>
-<li><b>Yalnızca çentikte bildirim:</b> Bir bildirim geldiğinde macOS'un sağ üst köşedeki baloncuğu gizlenir; bildirim yalnızca çentikte açılır. Hiçbir şey silinmez: bildirim her zamanki gibi Bildirim Merkezi'nde kalır.</li>
-<li><b>Daha hızlı:</b> islo. yeni bir bildirimi geldiği anda fark eder; çentik saniyenin küçük bir kesrinde açılır.</li>
-<li>Ayarlar › Özellikler › Bildirimler'deki <b>macOS'un bildirimini gizle</b> anahtarıyla açılıp kapatılır (varsayılan: açık).</li>
-</ul>
-<h4>Bilmen gerekenler</h4>
-<ul>
-<li>Çentik açıkken ya da tam ekran bir uygulamada gizliyken macOS'un baloncuğu görünmeye devam eder; islo. o anda bildirimi gösteremez.</li>
-<li>Takvim gibi yanıt bekleyen uyarılar 10 saniye sonra yine görünür, böylece kaybolmazlar.</li>
-</ul>
-<p><i>İzinlerin bu güncellemede korunur.</i></p>
-<h3>English</h3>
-<p>islo. 2.3.2 shows notifications only in the notch.</p>
-<h4>New</h4>
-<ul>
-<li><b>Notifications only in the notch:</b> When a notification arrives, macOS's banner in the top-right corner is hidden and the notification opens only in the notch. Nothing is dismissed: it stays in Notification Center as usual.</li>
-<li><b>Faster:</b> islo. notices a new notification the moment it arrives, so the notch opens in a fraction of a second.</li>
-<li>Turn it on or off with <b>Hide macOS's banner</b> in Settings › Features › Notifications (on by default).</li>
-</ul>
-<h4>Good to know</h4>
-<ul>
-<li>While the notch is open, or hidden over a full-screen app, macOS's banner still shows, since islo. can't show the notification then.</li>
-<li>Alerts that wait for an answer, like Calendar's, still appear after 10 seconds so they aren't missed.</li>
-</ul>
-<p><i>Your permissions are kept with this update.</i></p>
-]]></description>
-            <pubDate>Sat, 31 Oct 2026 15:26:02 +0300</pubDate>
-            <link>https://github.com/OzdmrYsn/islo</link>
-            <sparkle:version>21</sparkle:version>
-            <sparkle:shortVersionString>2.3.2</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.3.2/islo-2.3.2.zip" length="5744480" type="application/octet-stream" sparkle:edSignature="p8UwE7ICIqJY4LcHB0XxsqEH0ZZ2ZpDdncVSgK04SemNS8tg/hojZZ/Gl7OHrD/JwoCzpiQiVcqmYdhig9S6Aw=="/>
         </item>
     </channel>
 </rss>
