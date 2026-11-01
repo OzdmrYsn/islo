@@ -3,6 +3,46 @@
     <channel>
         <title>islo.</title>
         <item>
+            <title>2.4.0</title>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
+<h3>Türkçe</h3>
+<p>islo. 2.4 ile ilk izlenim baştan yazıldı: yeni bir tanıtım ve yeni bir kurulum penceresi.</p>
+<h4>Yeni</h4>
+<ul>
+<li><b>Baştan tasarlanan tanıtım:</b> islo. bir MacBook ekranının tepesinde canlanır; çentik uyanır, müzik çalar, sırayla mesaj, ses, ekran görüntüsü, indirme, "Süre doldu" ve toplantı uyarısını gösterir. Seni adınla karşılar, rengini ve tonunu seçtikçe canlı olarak değişir.</li>
+<li><b>Çentiğe uçan kapanış:</b> "islo.'yu başlat"a bastığında pencere küçülerek çentiğe uçar, ardından çentik açılıp seni karşılar.</li>
+<li><b>Yeni kurulum penceresi:</b> islo.'yu Uygulamalar'a sürüklediğin DMG artık koyu ve şık; yeni simge disk simgesi olarak da görünür.</li>
+</ul>
+<h4>İyileştirmeler</h4>
+<ul>
+<li>Tanıtımdaki izinler sayfası, Erişilebilirlik ve Takvim izinlerini durumlarıyla birlikte sade kartlarda gösterir.</li>
+<li>Kısayol tuşun tanıtımın son sayfasında klavye tuşları olarak görünür.</li>
+</ul>
+<p><i>Yeni tanıtımı Ayarlar › Hakkında › Tanıtım'dan istediğin zaman açabilirsin. İzinlerin bu güncellemede korunur.</i></p>
+<h3>English</h3>
+<p>islo. 2.4 rewrites the first impression: a new welcome guide and a new install window.</p>
+<h4>New</h4>
+<ul>
+<li><b>Redesigned welcome guide:</b> islo. comes to life at the top of a MacBook display; the notch wakes up, plays music, then shows a message, volume, a screenshot, a download, "Time's up" and a meeting in turn. It greets you by name and changes live as you pick your colour and tone.</li>
+<li><b>A finale into the notch:</b> When you press "Start islo.", the window shrinks into the notch, which then opens to say hello.</li>
+<li><b>New install window:</b> The DMG you drag islo. out of is now dark and polished, with the new icon as the volume icon.</li>
+</ul>
+<h4>Improvements</h4>
+<ul>
+<li>The guide's permissions page shows Accessibility and Calendar access, with their status, in simple cards.</li>
+<li>Your keyboard shortcut appears as keycaps on the last page of the guide.</li>
+</ul>
+<p><i>Open the new guide any time from Settings › About › Welcome guide. Your permissions are kept with this update.</i></p>
+]]></description>
+            <pubDate>Sun, 01 Nov 2026 03:27:41 +0300</pubDate>
+            <link>https://github.com/OzdmrYsn/islo</link>
+            <sparkle:version>23</sparkle:version>
+            <sparkle:shortVersionString>2.4.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.4.0/islo-2.4.0.zip" length="6021307" type="application/octet-stream" sparkle:edSignature="LUJ/SZ56aR8rp3IRka3FlbcRWwsObSzVd99xHWVsjXUXUgdEbTbtSSBcBrASz0DGzOmHB+ziG9FQs+RmFi3tAw=="/>
+        </item>
+        <item>
             <title>2.3.3</title>
             <description><![CDATA[
 <style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
@@ -79,34 +119,6 @@
             <sparkle:shortVersionString>2.3.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.3.2/islo-2.3.2.zip" length="5744480" type="application/octet-stream" sparkle:edSignature="p8UwE7ICIqJY4LcHB0XxsqEH0ZZ2ZpDdncVSgK04SemNS8tg/hojZZ/Gl7OHrD/JwoCzpiQiVcqmYdhig9S6Aw=="/>
-        </item>
-        <item>
-            <title>2.3.1</title>
-            <description><![CDATA[
-<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
-<h3>Türkçe</h3>
-<p>islo. 2.3.1 yeni bir simgeyle geliyor.</p>
-<h4>Yeni</h4>
-<ul>
-<li><b>Yeni simge:</b> Noktası çentik şeklinde küçük bir "i" ve "islo."nun sonundaki nokta; çentik, ayarlar ve siteyle aynı koyu görünümde.</li>
-<li><b>Menü çubuğu simgesi:</b> Menü çubuğunda artık tek renkli bir "i." işareti var; açık ve koyu menü çubuğuna kendiliğinden uyar.</li>
-</ul>
-<p><i>İzinlerin bu güncellemede korunur. Finder eski simgeyi kısa bir süre daha gösterebilir.</i></p>
-<h3>English</h3>
-<p>islo. 2.3.1 comes with a new icon.</p>
-<h4>New</h4>
-<ul>
-<li><b>New icon:</b> A lowercase "i" whose dot is the notch, followed by the full stop of "islo.", in the same dark look as the notch, Settings and website.</li>
-<li><b>Menu bar icon:</b> The menu bar now shows a single-colour "i." mark that follows light and dark menu bars.</li>
-</ul>
-<p><i>Your permissions are kept with this update. Finder may show the old icon for a little while.</i></p>
-]]></description>
-            <pubDate>Sat, 31 Oct 2026 11:13:30 +0300</pubDate>
-            <link>https://github.com/OzdmrYsn/islo</link>
-            <sparkle:version>20</sparkle:version>
-            <sparkle:shortVersionString>2.3.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.3.1/islo-2.3.1.zip" length="5713294" type="application/octet-stream" sparkle:edSignature="JSBLYM70t76pDbIzb+32VBGnbAoENmMvObFA9CtGIM4yoNW5S5JUkmRqhYs7OknH9/Hj08vcM1lrDlKEpHW3Aw=="/>
         </item>
     </channel>
 </rss>
