@@ -154,19 +154,12 @@ struct OnboardingView: View {
             headline(text("Senin rengin, ", "Your colour, "), text("senin tonun.", "your tone."))
             AccentSwatchPicker(selection: $settings.accentTheme, language: settings.language)
                 .padding(.top, 4)
-            HStack(spacing: 26) {
-                labeled(text("Ton", "Tone")) {
-                    ChipPicker(selection: $settings.surfaceTone, options: SurfaceTone.allCases.map { ($0, $0.title(language: settings.language)) }, accent: accent)
-                }
-                labeled(text("Boştayken", "While idle")) {
-                    ChipPicker(selection: $settings.notchIdleMode, options: NotchIdleMode.allCases.map { ($0, $0.title(language: settings.language)) }, accent: accent)
-                }
+            labeled(text("Ton", "Tone")) {
+                ChipPicker(selection: $settings.surfaceTone, options: SurfaceTone.allCases.map { ($0, $0.title(language: settings.language)) }, accent: accent)
             }
-            Text(settings.notchIdleMode.subtitle(language: settings.language))
+            Text(text("Ton, rengin açılan çentiğe ne kadar sineceğini belirler.", "Tone sets how much the colour tints the open notch."))
                 .font(.system(size: 12.5))
                 .foregroundStyle(IsloStyle.faint)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 520)
         }
         .frame(maxHeight: .infinity)
         .offset(y: -6)
