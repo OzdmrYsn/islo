@@ -8,7 +8,8 @@ background = defines["background"]
 format = "UDZO"
 filesystem = "HFS+"
 
-window_rect = ((200, 140), (640, 420))
+# The height includes Finder's title bar; background.tiff is 640 x 460.
+window_rect = ((200, 140), (640, 470))
 default_view = "icon-view"
 show_status_bar = False
 show_tab_view = False

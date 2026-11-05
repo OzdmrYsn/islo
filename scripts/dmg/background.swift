@@ -7,9 +7,11 @@ import SwiftUI
 //   /tmp/islo-dmg-background scripts/dmg
 //   tiffutil -cathidpicheck scripts/dmg/background.png scripts/dmg/background@2x.png -out scripts/dmg/background.tiff
 //
-// The window is 640 x 420 points. Icons sit at (160, 238) and (480, 238)
-// (see settings.py); Finder writes their names below them.
-let width: CGFloat = 640, height: CGFloat = 420
+// The window is 640 x 470 points with its title bar (see settings.py), so
+// 438–448 points of this image show depending on the macOS version; the
+// rest is spare gradient, and nothing important sits below y = 420. Icons sit
+// at (160, 238) and (480, 238); Finder writes their names below them.
+let width: CGFloat = 640, height: CGFloat = 460
 
 struct MiniMark: View {
     var body: some View {
@@ -49,6 +51,39 @@ struct Arrow: View {
     }
 }
 
+/// islo. isn't notarized yet, so macOS asks once on first launch; this says
+/// where to click before anyone gets stuck on the warning.
+struct FirstLaunchHint: View {
+    var body: some View {
+        HStack(spacing: 11) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(LinearGradient(colors: [Color(red: 0.48, green: 0.7, blue: 1), Color(red: 0.24, green: 0.42, blue: 1)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 26, height: 26)
+            VStack(alignment: .leading, spacing: 3) {
+                (Text("İlk açılışta uyarı çıkarsa: ").foregroundColor(.white.opacity(0.6))
+                    + Text("Sistem Ayarları › Gizlilik ve Güvenlik › ").foregroundColor(.white.opacity(0.92))
+                    + Text("Yine de Aç").foregroundColor(Color(red: 0.62, green: 0.76, blue: 1)).fontWeight(.bold))
+                    .font(.system(size: 11, weight: .medium))
+                Text("If macOS warns on first launch: System Settings › Privacy & Security › Open Anyway")
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(Color.white.opacity(0.055))
+                .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5))
+        )
+    }
+}
+
 struct Background: View {
     var body: some View {
         ZStack {
@@ -81,10 +116,8 @@ struct Background: View {
                     .foregroundStyle(.white.opacity(0.55))
                     .padding(.top, 8)
                 Spacer()
-                Text("Ücretsiz  ·  macOS 13+  ·  ozdmrysn.github.io/islo")
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.32))
-                    .padding(.bottom, 16)
+                FirstLaunchHint()
+                    .padding(.bottom, 44)
             }
             .foregroundStyle(.white)
 
