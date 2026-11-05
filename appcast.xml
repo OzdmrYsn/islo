@@ -3,6 +3,56 @@
     <channel>
         <title>islo.</title>
         <item>
+            <title>2.5.0</title>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
+<h3>Türkçe</h3>
+<p>islo. 2.5 ile mesajlara çentikten yanıt verir, kimin bildiriminin görüneceğini seçer ve yağmurdan önce haber alırsın. Çentiği olmayan Mac'ler de artık kendi çentiğine kavuşuyor.</p>
+<h4>Yeni</h4>
+<ul>
+<li><b>Bildirimden hızlı yanıt:</b> Mesaj çentikte açılınca altında "Yanıtla" ve uygulamanın diğer düğmeleri (ör. "Okundu olarak işaretle") çıkar. Yanıtı çentikte yazıp Return ile gönderirsin; açık olan uygulaman önde kalır.</li>
+<li><b>Uygulama kuralları:</b> Ayarlar › Özellikler › Bildirimler'de bildirim gönderen uygulamalar listelenir. Kapattığın uygulamanın bildirimini çentik göstermez, macOS gösterir.</li>
+<li><b>VIP kişiler:</b> Eklediğin kişilerden gelen mesajlar çentikte altın rengiyle ve daha uzun süre görünür.</li>
+<li><b>Yağmur uyarısı:</b> Yağmur bir saat içinde başlayacaksa çentik "20 dk sonra yağmur" der ve önümüzdeki iki saati çubuklarla gösterir.</li>
+<li><b>Saatlik tahmin:</b> Ana sayfada hava durumuna tıklayınca önümüzdeki saatler açılır: sıcaklık, gökyüzü ve yağış olasılığı.</li>
+<li><b>Otomatik temizleme:</b> Bildirimler ve Dosya Rafı için 1 saat, 1 gün ya da 1 hafta sonra kendiliğinden temizlenme seçeneği. Raftan kalkan dosyalar silinmez.</li>
+</ul>
+<h4>İyileştirmeler</h4>
+<ul>
+<li><b>Çentiği olmayan Mac'ler:</b> islo. ekranın üst kenarından gerçek bir çentik gibi sarkar, boştayken gizlenir. Yazıları kesen kapsül görünümü ve hiç kaybolmayan ses göstergesi düzeldi.</li>
+<li><b>Kamera/mikrofon göstergesi:</b> Küçülmüş hâlde noktalar ve kullanan uygulamanın simgesi kameranın yanında düzgünce durur.</li>
+<li><b>Dosya Rafı:</b> Çok geniş ya da çok uzun görseller artık yanındaki dosyaların üstüne taşmıyor.</li>
+<li><b>Kurulum:</b> Kurulum penceresi ilk açılışta macOS'un istediği "Yine de Aç" adımını gösterir.</li>
+</ul>
+<p><i>İzinlerin bu güncellemede korunur. Hızlı yanıt, macOS'un bildirimde sunduğu düğmeleri kullanır; düğmesi olmayan uygulamalarda görünmez.</i></p>
+<h3>English</h3>
+<p>islo. 2.5 lets you reply from the notch, choose whose notifications show up and hear about rain before it starts. Macs without a notch now get one of their own.</p>
+<h4>New</h4>
+<ul>
+<li><b>Quick reply:</b> When a message opens in the notch, "Reply" and the app's other buttons (e.g. "Mark as Read") appear under it. Type your answer in the notch and press Return; the app you're in stays in front.</li>
+<li><b>App rules:</b> Settings › Features › Notifications lists the apps that send notifications. Turn one off and macOS shows its notifications instead of the notch.</li>
+<li><b>VIP people:</b> Messages from the people you add show in gold and stay longer in the notch.</li>
+<li><b>Rain alert:</b> When rain starts within the hour, the notch says "Rain in 20 min" and shows the next two hours as bars.</li>
+<li><b>Hourly forecast:</b> Click the weather on Home for the next hours: temperature, sky and chance of rain.</li>
+<li><b>Clear automatically:</b> Notifications and the File Shelf can clear themselves after 1 hour, 1 day or 1 week. Files taken off the shelf aren't deleted.</li>
+</ul>
+<h4>Improvements</h4>
+<ul>
+<li><b>Macs without a notch:</b> islo. hangs from the top edge like a real notch and hides while idle. The capsule that cut off text and the volume indicator that never left are fixed.</li>
+<li><b>Camera/mic indicator:</b> In its small state, the dots and the icon of the app using them sit neatly beside the camera.</li>
+<li><b>File Shelf:</b> Very wide or tall images no longer spill over the files next to them.</li>
+<li><b>Install:</b> The install window shows the "Open Anyway" step macOS asks for on first launch.</li>
+</ul>
+<p><i>Your permissions are kept with this update. Quick reply uses the buttons macOS offers on a notification; it doesn't appear for apps that don't have them.</i></p>
+]]></description>
+            <pubDate>Fri, 06 Nov 2026 02:42:32 +0300</pubDate>
+            <link>https://github.com/OzdmrYsn/islo</link>
+            <sparkle:version>25</sparkle:version>
+            <sparkle:shortVersionString>2.5.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.0/islo-2.5.0.zip" length="6506131" type="application/octet-stream" sparkle:edSignature="PAJegTYXd59otd4xD9U/dBLYQJJvyC6cXcXEFr2UBDY1qPLyX70KKU78rlaxmI3EsTkGUpjng4xJYQESZ4ELCw=="/>
+        </item>
+        <item>
             <title>2.4.1</title>
             <description><![CDATA[
 <style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
@@ -71,44 +121,6 @@
             <sparkle:shortVersionString>2.4.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.4.0/islo-2.4.0.zip" length="6021307" type="application/octet-stream" sparkle:edSignature="LUJ/SZ56aR8rp3IRka3FlbcRWwsObSzVd99xHWVsjXUXUgdEbTbtSSBcBrASz0DGzOmHB+ziG9FQs+RmFi3tAw=="/>
-        </item>
-        <item>
-            <title>2.3.3</title>
-            <description><![CDATA[
-<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
-<h3>Türkçe</h3>
-<p>islo. 2.3.3 ile şarkı sözleri çok daha sık bulunur.</p>
-<h4>Düzeltmeler</h4>
-<ul>
-<li><b>"Söz bulunamadı" hatası:</b> Bu mesajın çoğu, söz servisi LRCLIB yoğunken verdiği "meşgulüm" cevabından geliyordu. islo. artık böyle anlarda bekleyip yeniden soruyor; servis bir süre yanıt vermezse kartta "Sözlere şu an ulaşılamıyor" yazıyor ve şarkı sürdükçe kendiliğinden tekrar deniyor.</li>
-<li><b>Daha esnek arama:</b> "(feat. …)", "- Remastered" gibi ekler ayıklanır; şarkı ana sanatçıyla ve serbest metinle de aranır, doğru sanatçının yakın süredeki kaydı seçilir.</li>
-</ul>
-<h4>Yeni</h4>
-<ul>
-<li><b>Zamanlı olmayan sözler de görünür:</b> Sözleri zamanlı olmayan şarkılarda sözler artık gösterilir ve şarkının ilerleyişine göre yaklaşık olarak akar.</li>
-<li><b>İnternetsiz sözler:</b> Bir kez bulunan sözler Mac'inde saklanır; aynı şarkı tekrar çaldığında internete gerek kalmaz.</li>
-</ul>
-<p><i>İzinlerin bu güncellemede korunur.</i></p>
-<h3>English</h3>
-<p>islo. 2.3.3 finds lyrics far more often.</p>
-<h4>Fixes</h4>
-<ul>
-<li><b>"No lyrics found":</b> Most of these came from LRCLIB, the lyrics service, answering "busy" under load. islo. now waits and asks again; if the service stays busy, the card says lyrics are unavailable right now and islo. tries again by itself while the song plays.</li>
-<li><b>Smarter search:</b> "(feat. …)", "- Remastered" and similar are left out, the song is also searched with its lead artist and as free text, and the right artist's recording closest in length is chosen.</li>
-</ul>
-<h4>New</h4>
-<ul>
-<li><b>Untimed lyrics show too:</b> For songs without timed lyrics, the lyrics now appear and move along with the song, roughly.</li>
-<li><b>Lyrics without internet:</b> Lyrics found once are kept on your Mac, so the same song needs no network next time.</li>
-</ul>
-<p><i>Your permissions are kept with this update.</i></p>
-]]></description>
-            <pubDate>Sat, 31 Oct 2026 19:16:54 +0300</pubDate>
-            <link>https://github.com/OzdmrYsn/islo</link>
-            <sparkle:version>22</sparkle:version>
-            <sparkle:shortVersionString>2.3.3</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.3.3/islo-2.3.3.zip" length="5771593" type="application/octet-stream" sparkle:edSignature="0GzTtIVgj/yo7MPSItpETUXjL5R5C8NO+JW17o3Iia12SZs+RkJfFsCe/ZPUxoP1FT/HodnZ5z9c38uKKq9UBw=="/>
         </item>
     </channel>
 </rss>
