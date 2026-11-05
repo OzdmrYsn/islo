@@ -934,3 +934,28 @@ renderRing(downloadPct, downloadRing, reduceMotion ? 64 : 0);
 fitDash();
 if (document.fonts) document.fonts.ready.then(fitTabs);
 playStory(0);
+
+/* ------------------------------------------------- First-launch guide card */
+/* islo. isn't notarized yet, so macOS asks once on first launch. Right after
+   the DMG starts downloading, show where to click. */
+
+const launchSheet = $('#launchSheet');
+if (launchSheet) {
+  let hideTimer;
+  const showSheet = () => {
+    clearTimeout(hideTimer);
+    launchSheet.hidden = false;
+    requestAnimationFrame(() => requestAnimationFrame(() => launchSheet.classList.add('open')));
+  };
+  const hideSheet = () => {
+    launchSheet.classList.remove('open');
+    hideTimer = setTimeout(() => { launchSheet.hidden = true; }, 400);
+  };
+  $$('a[href$="islo.dmg"]').forEach((link) => {
+    link.addEventListener('click', () => setTimeout(showSheet, 350));
+  });
+  $('.ls-close', launchSheet).addEventListener('click', hideSheet);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !launchSheet.hidden) hideSheet();
+  });
+}

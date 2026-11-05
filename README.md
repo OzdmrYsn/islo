@@ -2,13 +2,13 @@
 
 [Türkçe](#türkçe) · [English](#english) · [Website](https://ozdmrysn.github.io/islo/) · [Releases](https://github.com/OzdmrYsn/islo/releases)
 
-islo. brings Music, focus tools and quick utilities to the top of macOS. It blends into the camera notch on compatible MacBooks and becomes a compact floating island on other displays.
+islo. brings Music, focus tools and quick utilities to the top of macOS. It blends into the camera notch on compatible MacBooks and draws a notch of its own at the top of displays without one.
 
 > Minimum system: macOS 13 · Universal binary: Apple Silicon + Intel
 
 ## Türkçe
 
-islo., medya kontrollerini ve günlük araçları MacBook'un kamera çentiğiyle bütünleştiren SwiftUI + AppKit uygulamasıdır. Çentik olmayan ekranlarda ekranın üst-ortasında zarif bir yüzen ada olarak görünür; Dock'ta yer kaplamadan menü çubuğundan yönetilir.
+islo., medya kontrollerini ve günlük araçları MacBook'un kamera çentiğiyle bütünleştiren SwiftUI + AppKit uygulamasıdır. Çentik olmayan ekranlarda ekranın üst ortasına kendi çentiğini çizer; boştayken gizlenir, Dock'ta yer kaplamadan menü çubuğundan yönetilir.
 
 ### Özellikler
 
@@ -35,6 +35,10 @@ islo., medya kontrollerini ve günlük araçları MacBook'un kamera çentiğiyle
 - Ekran görüntüsü önizlemesi: sürükle-bırak, kopyala, rafa ekle, göster, sil
 - Kapalı çentikte indirme ilerlemesi (Safari, Chrome, AirDrop) ve Aç/Göster
 - Kısayollar sekmesi ve Pomodoro odak başlangıç/bitiş otomasyonları
+- Bildirimden hızlı yanıt ve bildirimin kendi düğmeleri (ör. Okundu olarak işaretle)
+- Bildirimler için uygulama kuralları ve altın renkli VIP kişiler
+- Bir saat içinde başlayacak yağmur için uyarı ve saatlik hava tahmini
+- Bildirimleri ve Dosya Rafı'nı belli bir süre sonra otomatik temizleme
 - Eksik izinleri gösteren ve tek tıkla onaran İzinler sayfası
 - Dock simgesi olmadan menü çubuğunda çalışma
 - Tüm Spaces ve tam ekran uygulamalarla çalışma
@@ -43,10 +47,10 @@ islo., medya kontrollerini ve günlük araçları MacBook'un kamera çentiğiyle
 
 1. [islo. DMG dosyasını](https://github.com/OzdmrYsn/islo/releases/latest/download/islo.dmg) indirin ve açın.
 2. `islo.app` uygulamasını aynı penceredeki **Applications / Uygulamalar** kısayoluna sürükleyin.
-3. İlk açılışta uygulamaya Control-tıklayıp **Aç** seçeneğini kullanın.
+3. islo.'yu açın. macOS “doğrulanamadı” derse **Bitti**'ye basın, ardından **Sistem Ayarları › Gizlilik ve Güvenlik**'te en alta inip **Yine de Aç**'a tıklayın.
 4. Music veya Spotify kontrolü için macOS'un istediği **Automation** iznine onay verin.
 
-Apple Developer ID ile notarizasyon henüz tamamlanmadığı için ilk açılışta macOS güvenlik uyarısı gösterebilir. Control-tıklama > Aç işlemi uygulama için kalıcı onay oluşturur.
+Apple Developer ID ile notarizasyon henüz tamamlanmadığı için macOS ilk açılışta onay ister. **Yine de Aç** bir kez yapılır; macOS bunu kalıcı olarak hatırlar. (macOS 15 ve sonrasında Control-tıklama > Aç yolu artık çalışmıyor.)
 
 ### Kaynaktan çalıştırma
 
@@ -56,7 +60,7 @@ Apple Developer ID ile notarizasyon henüz tamamlanmadığı için ilk açılı�
 
 ## English
 
-islo. is a SwiftUI + AppKit app that blends media controls and everyday utilities into the MacBook camera notch. On displays without a notch, it appears as an elegant floating island at the top center and runs from the menu bar without occupying the Dock.
+islo. is a SwiftUI + AppKit app that blends media controls and everyday utilities into the MacBook camera notch. On displays without a notch, it draws a notch of its own at the top center, hides while idle and runs from the menu bar without occupying the Dock.
 
 ### Features
 
@@ -83,6 +87,10 @@ islo. is a SwiftUI + AppKit app that blends media controls and everyday utilitie
 - Screenshot preview: drag and drop, copy, add to the shelf, reveal, delete
 - Download progress in the closed notch (Safari, Chrome, AirDrop) with Open/Show
 - A Shortcuts tab and Pomodoro focus start/end automations
+- Quick reply from notifications, plus their own buttons (e.g. Mark as Read)
+- App rules for notifications and VIP people shown in gold
+- An alert for rain starting within the hour, and an hourly forecast
+- Notifications and the File Shelf that clear themselves after a set time
 - A Permissions page that shows missing permissions and repairs them in one click
 - Menu-bar operation without a Dock icon
 - Works across Spaces and over full-screen apps
@@ -91,10 +99,10 @@ islo. is a SwiftUI + AppKit app that blends media controls and everyday utilitie
 
 1. Download and open the latest [islo. DMG](https://github.com/OzdmrYsn/islo/releases/latest/download/islo.dmg).
 2. Drag `islo.app` onto the **Applications** shortcut in the same window.
-3. On first launch, Control-click the app and choose **Open**.
+3. Open islo. If macOS says it couldn't be verified, click **Done**, then scroll to the bottom of **System Settings › Privacy & Security** and click **Open Anyway**.
 4. Approve the macOS **Automation** request to control Music or Spotify.
 
-The app is not yet notarized with an Apple Developer ID, so macOS may show a security warning on first launch. Control-click > Open creates a permanent approval for the app.
+The app is not yet notarized with an Apple Developer ID, so macOS asks once on first launch. **Open Anyway** is a one-time step that macOS remembers. (Since macOS 15, Control-click > Open no longer works.)
 
 ### Run from source
 
