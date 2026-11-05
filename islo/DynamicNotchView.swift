@@ -10,6 +10,17 @@ enum NotchPresentationState: Equatable {
 
 private enum ShelfFilter { case all, images, documents }
 
+/// Where a notification's buttons stand: ready, replying from the notch,
+/// then done or handed to macOS / the app.
+private enum ReplyPhase: Equatable {
+    case none
+    case opening
+    case typing
+    case sending
+    case done(String)
+    case handedOff(String)
+}
+
 private enum ClipboardFilter { case all, text, links }
 
 private enum FileDropTarget {
@@ -38,6 +49,10 @@ struct NotchLayout: Equatable {
 
     private static let compactWingWidth: CGFloat = 50
 
+    /// Without a camera housing, a resting islo. shrinks to an invisible
+    /// strip at the top edge; reaching it with the pointer opens islo.
+    private static let hiddenStripHeight: CGFloat = 5
+
     init(screen: NSScreen?) {
         guard let screen else {
             idleWidth = 176
@@ -48,6 +63,17 @@ struct NotchLayout: Equatable {
         }
 
         screenWidth = screen.frame.width
+
+        #if DEBUG
+        // `defaults write com.ozdmrysn.islo debug.simulateNoNotch -bool true`
+        // shows the layout of a Mac without a notch.
+        if UserDefaults.standard.bool(forKey: "debug.simulateNoNotch") {
+            idleWidth = 176
+            notchBandHeight = 0
+            cameraHousingWidth = 0
+            return
+        }
+        #endif
 
         guard screen.safeAreaInsets.top > 0,
               let leftArea = screen.auxiliaryTopLeftArea,
@@ -93,11 +119,10 @@ struct NotchLayout: Equatable {
     ) -> CGSize {
         switch state {
         case .idle:
-            if hasCameraHousing, idleMode == .hiddenMini {
-                return CGSize(
-                    width: cameraHousingWidth,
-                    height: notchBandHeight
-                )
+            if idleMode == .hiddenMini {
+                return hasCameraHousing
+                    ? CGSize(width: cameraHousingWidth, height: notchBandHeight)
+                    : CGSize(width: idleWidth, height: Self.hiddenStripHeight)
             }
 
             return CGSize(
@@ -171,6 +196,10 @@ struct DynamicNotchView: View {
     @State private var displayedEchoRevision = 0
     /// While the pointer is on a HUD with buttons it stays up.
     @State private var isEchoHovered = false
+    @State private var replyPhase: ReplyPhase = .none
+    @State private var showsHourlyWeather = false
+    @State private var replyText = ""
+    @FocusState private var isReplyFieldFocused: Bool
     @State private var echoActionDone: String?
     /// A meeting alert that arrived while the dashboard was open.
     @State private var pendingEventAlert: CalendarEventInfo?
@@ -244,8 +273,7 @@ struct DynamicNotchView: View {
         )
         .animation(presentationAnimation, value: isFileDropHUDVisible)
         .background {
-            if isHiddenMiniIdle && isIdleSurfaceConcealed
-                && !isCommandEchoVisible && !isFileDropHUDVisible {
+            if isSurfaceConcealed {
                 Color.clear
             } else if isCommandEchoVisible || isFileDropHUDVisible {
                 notchShape.fill(Color.black)
@@ -255,7 +283,9 @@ struct DynamicNotchView: View {
         }
         .clipShape(notchShape)
         .overlay {
-            if !layout.hasCameraHousing {
+            // No black bezel to blend into: a hairline keeps the edge
+            // visible over a dark menu bar.
+            if !layout.hasCameraHousing, !isSurfaceConcealed {
                 notchShape
                     .stroke(primaryColor.opacity(0.13), lineWidth: 0.5)
             }
@@ -277,6 +307,13 @@ struct DynamicNotchView: View {
             isFileDropTargeted || isShelfTileTargeted || isAirDropTileTargeted ||
                 (fileShelfManager.isFileDragActive && presentation == .idle)
         )
+    }
+
+    private var haloTint: Color {
+        if isCommandEchoVisible, case .notification(let item) = displayedEcho, settings.isVIP(item) {
+            return vipGold
+        }
+        return .white
     }
 
     private var showsHalo: Bool {
@@ -323,7 +360,7 @@ struct DynamicNotchView: View {
     /// brightest part of the blur sits right at the visible edge.
     private func haloLayer(spread: CGFloat) -> some View {
         notchShape
-            .fill(Color.white)
+            .fill(haloTint)
             .frame(
                 width: surfaceSize.width + spread * 2,
                 height: surfaceSize.height + spread
@@ -353,6 +390,16 @@ struct DynamicNotchView: View {
             commandEchoTask?.cancel()
             windowSettleTask?.cancel()
             idleWingsTask?.cancel()
+        }
+        .onReceive(weatherManager.$rainAlertRevision.dropFirst()) { _ in
+            guard let outlook = weatherManager.rainAlert else { return }
+            commandEchoManager.showRain(outlook)
+        }
+        .onChange(of: isCommandEchoVisible) { visible in
+            guard !visible, replyPhase != .none else { return }
+            if replyPhase == .typing || replyPhase == .opening { notificationMonitor.cancelReply() }
+            releaseTypingFocus()
+            replyPhase = .none
         }
         .onReceive(mediaManager.$isPlaying.dropFirst().removeDuplicates()) { playing in
             updateIdleWings(isPlaying: playing)
@@ -565,12 +612,12 @@ struct DynamicNotchView: View {
                 if layout.hasCameraHousing {
                     // Fades with the wings as they slide into the notch.
                     notchedCompactContent
-                        .opacity(isHiddenMiniIdle ? 0 : 1)
-                        .accessibilityHidden(isHiddenMiniIdle)
                 } else {
                     standardCompactContent
                 }
             }
+            .opacity(isHiddenMiniIdle ? 0 : 1)
+            .accessibilityHidden(isHiddenMiniIdle)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(notchShape)
         }
@@ -581,9 +628,15 @@ struct DynamicNotchView: View {
     }
 
     private var notchedCompactContent: some View {
-        HStack(spacing: 0) {
+        // Music and timers hug the camera housing; the camera/mic state sits
+        // in the middle of its narrower wings, clear of the housing's edge.
+        let isPrivacy = idleActivity == .privacy
+        // Centred in the part of the wing the outer curve leaves visible.
+        let outerInset = isPrivacy ? bodyInset : 0
+        return HStack(spacing: 0) {
             compactLeadingWing
-                .frame(width: layout.compactWingWidth, alignment: .trailing)
+                .frame(width: idleWingWidth - outerInset, alignment: isPrivacy ? .center : .trailing)
+                .padding(.leading, outerInset)
                 // The left wing's outer corner is free (its content hugs the
                 // camera housing), so the camera/mic dot sits there.
                 .overlay(alignment: .leading) { privacyCornerDot.padding(.leading, 7) }
@@ -593,8 +646,35 @@ struct DynamicNotchView: View {
                 .accessibilityHidden(true)
 
             compactTrailingWing
-                .frame(width: layout.compactWingWidth, alignment: .leading)
+                .frame(width: idleWingWidth - outerInset, alignment: isPrivacy ? .center : .leading)
+                .padding(.trailing, outerInset)
                 .accessibilityHidden(true)
+        }
+    }
+
+    /// The camera/mic state needs less room than music: its dots and the
+    /// icon of the app using them.
+    private var idleWingWidth: CGFloat {
+        idleActivity == .privacy ? 40 : layout.compactWingWidth
+    }
+
+    /// The app using the camera or microphone, by its icon; a camera or
+    /// microphone symbol when macOS doesn't say which app it is.
+    @ViewBuilder
+    private var privacyAppBadge: some View {
+        let usage = privacyMonitor.usage
+        if let name = usage.appName,
+           let icon = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == name })?.icon {
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 18, height: 18)
+                .help(name)
+        } else {
+            Image(systemName: usage.camera ? "video.fill" : "mic.fill")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.85))
+                .help(usage.appName ?? privacyKindText(usage))
         }
     }
 
@@ -607,7 +687,7 @@ struct DynamicNotchView: View {
             compactTrailingWing
                 .accessibilityHidden(true)
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, bodyInset + 8)
         .overlay { privacyCornerDot }
     }
 
@@ -679,11 +759,7 @@ struct DynamicNotchView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
         case .privacy:
-            Text(privacyMonitor.usage.appName ?? privacyKindText(privacyMonitor.usage))
-                .font(.system(size: 9.5, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(0.85))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            privacyAppBadge
         case .timer:
             Text(focusTimerManager.formattedTime)
                 .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
@@ -916,16 +992,77 @@ struct DynamicNotchView: View {
                         .foregroundStyle(primaryColor.opacity(0.58))
                 }
 
-                calendarSummaryCards(now: context.date, separatorTitle: localized("Sıradaki", "Up next"))
+                if showsHourlyWeather, let weather = weatherManager.snapshot, !weather.hourly.isEmpty {
+                    hourlyWeatherStrip(weather)
+                } else {
+                    calendarSummaryCards(now: context.date, separatorTitle: localized("Sıradaki", "Up next"))
+                }
             }
         }
     }
 
+    /// The next hours: time, sky, temperature and the chance of rain.
+    private func hourlyWeatherStrip(_ weather: WeatherSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let rain = weather.rain {
+                Label(rainStartText(rain), systemImage: "umbrella.fill")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.45, green: 0.72, blue: 1))
+            } else {
+                Text(localized("Saatlik", "Hourly"))
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(primaryColor.opacity(0.4))
+            }
+            HStack(spacing: 0) {
+                ForEach(Array(weather.hourly.enumerated()), id: \.element.id) { index, hour in
+                    VStack(spacing: 4) {
+                        Text(index == 0 ? localized("Şimdi", "Now") : hourLabel(hour.date))
+                            .font(.system(size: 8.5, weight: .semibold))
+                            .foregroundStyle(primaryColor.opacity(index == 0 ? 0.85 : 0.5))
+                        Image(systemName: WeatherManager.symbolName(code: hour.code, isDay: hour.isDay))
+                            .symbolRenderingMode(.multicolor)
+                            .font(.system(size: 13))
+                            .frame(height: 16)
+                        Text("\(Int(hour.temperature.rounded()))°")
+                            .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(primaryColor)
+                        Text(hour.precipitationChance >= 20 ? "%\(hour.precipitationChance)" : " ")
+                            .font(.system(size: 8, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(Color(red: 0.45, green: 0.72, blue: 1))
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(primaryColor.opacity(0.075))
+            )
+        }
+        .transition(.opacity)
+    }
+
+    private func hourLabel(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: settings.language == .turkish ? "tr_TR" : "en_US")
+        formatter.setLocalizedDateFormatFromTemplate(settings.language == .turkish ? "HH" : "ha")
+        return formatter.string(from: date)
+    }
+
     /// Icon, temperature and city; the tooltip has the day's range.
+    /// Clicking it swaps the agenda for the hourly forecast and back.
     @ViewBuilder
     private var weatherChip: some View {
         if settings.weatherEnabled, let weather = weatherManager.snapshot {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showsHourlyWeather.toggle() }
+            } label: {
             HStack(spacing: 4) {
+                if weather.rain != nil {
+                    Image(systemName: "umbrella.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Color(red: 0.45, green: 0.72, blue: 1))
+                }
                 Image(systemName: WeatherManager.symbolName(code: weather.code, isDay: weather.isDay))
                     .symbolRenderingMode(.multicolor)
                     .font(.system(size: 11))
@@ -936,7 +1073,15 @@ struct DynamicNotchView: View {
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(primaryColor.opacity(0.5))
                     .lineLimit(1)
+                if !weather.hourly.isEmpty {
+                    Image(systemName: showsHourlyWeather ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(primaryColor.opacity(0.4))
+                }
             }
+            .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
             .help(
                 WeatherManager.summary(code: weather.code, turkish: settings.language == .turkish)
                     + localized(" · En yüksek \(Int(weather.high.rounded()))° · En düşük \(Int(weather.low.rounded()))°",
@@ -1803,22 +1948,28 @@ struct DynamicNotchView: View {
         let tileShape = RoundedRectangle(cornerRadius: 13, style: .continuous)
 
         return VStack(alignment: .leading, spacing: 5) {
-            ZStack {
-                if let thumbnail = fileShelfManager.thumbnails[url] {
-                    Image(nsImage: thumbnail)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    primaryColor.opacity(0.06)
-                    Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-                        .resizable()
-                        .scaledToFit()
-                        .padding(8)
+            // The fixed frame sizes the tile; the preview only fills it. A
+            // very wide or tall image filling on its own would widen the tile
+            // past its grid cell and over its neighbours.
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .overlay {
+                    if let thumbnail = fileShelfManager.thumbnails[url] {
+                        Image(nsImage: thumbnail)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        ZStack {
+                            primaryColor.opacity(0.06)
+                            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                                .resizable()
+                                .scaledToFit()
+                                .padding(8)
+                        }
+                    }
                 }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
 
             Text(url.lastPathComponent)
                 .font(.system(size: 9.5, weight: .semibold))
@@ -2639,10 +2790,72 @@ struct DynamicNotchView: View {
                 screenshotHUD(capture)
             } else if case .downloadFinished(let download) = displayedEcho {
                 downloadHUD(download)
+            } else if case .rain(let outlook) = displayedEcho {
+                rainHUD(outlook)
             } else {
                 systemEchoHUD
             }
         }
+    }
+
+    /// Rain within the hour: when it starts, how likely, and the next two
+    /// hours in quarter-hour bars. Clicking opens the hourly forecast.
+    private func rainHUD(_ outlook: RainOutlook) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                HStack(spacing: 7) {
+                    Image(systemName: "cloud.rain.fill")
+                        .symbolRenderingMode(.multicolor)
+                        .font(.system(size: 13))
+                    Text(rainStartText(outlook))
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: layout.hasCameraHousing ? commandEchoWingWidth : .infinity, alignment: .leading)
+                if layout.hasCameraHousing {
+                    Color.clear.frame(width: layout.cameraHousingWidth).accessibilityHidden(true)
+                }
+                Text(outlook.chance.map { localized("%\($0) olasılık", "\($0)% chance") } ?? localized("Şemsiyeni al", "Take an umbrella"))
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+                    .frame(maxWidth: layout.hasCameraHousing ? commandEchoWingWidth : .infinity, alignment: .trailing)
+            }
+            .padding(.horizontal, 18)
+            .frame(height: layout.hasCameraHousing ? layout.notchBandHeight : 34)
+
+            RainBars(slots: outlook.slots)
+                .frame(height: 26)
+                .padding(.horizontal, bodyPadding(18, gap: 16))
+                .padding(.top, 8)
+            HStack {
+                Text(localized("Şimdi", "Now"))
+                Spacer()
+                Text(localized("+1 sa", "+1 h"))
+                Spacer()
+                Text(localized("+2 sa", "+2 h"))
+            }
+            .font(.system(size: 8.5, weight: .medium))
+            .foregroundStyle(.white.opacity(0.45))
+            .padding(.horizontal, bodyPadding(18, gap: 16))
+            .padding(.top, 4)
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            showsHourlyWeather = true
+            openDashboard(at: .home)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(rainStartText(outlook)))
+    }
+
+    private func rainStartText(_ outlook: RainOutlook) -> String {
+        let minutes = Int((outlook.start.timeIntervalSinceNow / 60).rounded())
+        guard minutes >= 5 else { return localized("Yağmur başlamak üzere", "Rain is about to start") }
+        let rounded = max(5, (minutes + 2) / 5 * 5)
+        return localized("\(rounded) dk sonra yağmur", "Rain in \(rounded) min")
     }
 
     /// A meeting is about to start: its title and time on the left, Join
@@ -2968,8 +3181,10 @@ struct DynamicNotchView: View {
     private func notificationHUD(_ item: CapturedNotification) -> some View {
         let showsContent = settings.notificationPreviewStyle == .content
         let unread = max(notificationMonitor.unreadCount, 1)
+        let isVIP = settings.isVIP(item)
 
         return VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
                 HStack(spacing: 7) {
                     if showsContent {
@@ -2978,6 +3193,12 @@ struct DynamicNotchView: View {
                         Text(item.appName)
                             .font(.system(size: 11, weight: .semibold))
                             .lineLimit(1)
+                        if isVIP {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(vipGold)
+                                .accessibilityLabel(Text("VIP"))
+                        }
                     } else {
                         Image(systemName: "bell.fill")
                             .font(.system(size: 12, weight: .bold))
@@ -3018,6 +3239,7 @@ struct DynamicNotchView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.headline)
                         .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(isVIP ? vipGold : Color.white)
                         .lineLimit(1)
                     if !item.detail.isEmpty {
                         Text(item.detail)
@@ -3029,14 +3251,216 @@ struct DynamicNotchView: View {
                 .padding(.horizontal, bodyPadding(18, gap: 16))
                 .padding(.top, 4)
             }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture(perform: openNotifications)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint(Text(localized("Bildirimleri açar", "Opens notifications")))
+
+            if showsNotificationActionRow(item) {
+                notificationActionRow(item)
+                    .padding(.horizontal, bodyPadding(18, gap: 16))
+                    .padding(.top, 10)
+            }
         }
         .foregroundStyle(.white)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: openNotifications)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityHint(Text(localized("Bildirimleri açar", "Opens notifications")))
+        .onHover(perform: echoHoverChanged)
+    }
+
+    // MARK: Notification buttons and replies
+
+    /// The row under a notification: its buttons, the reply field while
+    /// replying, then how it went.
+    private func showsNotificationActionRow(_ item: CapturedNotification) -> Bool {
+        settings.notificationPreviewStyle == .content && (!item.actions.isEmpty || replyPhase != .none)
+    }
+
+    @ViewBuilder
+    private func notificationActionRow(_ item: CapturedNotification) -> some View {
+        switch replyPhase {
+        case .opening:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(localized("Yanıt kutusu açılıyor…", "Opening the reply box…"))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.65))
+            }
+            .frame(height: 28)
+        case .typing, .sending:
+            HStack(spacing: 7) {
+                TextField(localized("Yanıt yaz…", "Write a reply…"), text: $replyText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .focused($isReplyFieldFocused)
+                    .onSubmit { sendReply() }
+                    .onExitCommand(perform: cancelReply)
+                    .disabled(replyPhase == .sending)
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(Capsule().fill(Color.white.opacity(0.1)))
+                    .overlay(Capsule().strokeBorder(accent.opacity(0.7), lineWidth: 1))
+                Button(action: sendReply) {
+                    Group {
+                        if replyPhase == .sending {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(accent))
+                }
+                .buttonStyle(.plain)
+                .disabled(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || replyPhase == .sending)
+                .help(localized("Gönder (Return)", "Send (Return)"))
+                Button(action: cancelReply) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Color.white.opacity(0.1)))
+                }
+                .buttonStyle(.plain)
+                .help(localized("Vazgeç (Esc)", "Cancel (Esc)"))
+            }
+        case .done(let message):
+            Label(message, systemImage: "checkmark.circle.fill")
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(Color.green)
+                .frame(height: 28)
+        case .handedOff(let message):
+            Label(message, systemImage: "arrow.up.forward.app.fill")
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.75))
+                .frame(height: 28)
+        case .none:
+            HStack(spacing: 6) {
+                if item.replyAction != nil {
+                    notificationButton(localized("Yanıtla", "Reply"), symbol: "arrowshape.turn.up.left.fill", prominent: true) {
+                        startReply(item)
+                    }
+                }
+                ForEach(Array(item.otherActions.prefix(2)), id: \.self) { action in
+                    notificationButton(action.title, symbol: nil, prominent: false) {
+                        performNotificationAction(action, on: item)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func notificationButton(
+        _ title: String,
+        symbol: String?,
+        prominent: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if let symbol {
+                    Image(systemName: symbol).font(.system(size: 9.5, weight: .bold))
+                }
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .frame(height: 26)
+            .background(Capsule().fill(prominent ? accent : Color.white.opacity(0.12)))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var isReplyActive: Bool {
+        replyPhase == .opening || replyPhase == .typing || replyPhase == .sending
+    }
+
+    private var vipGold: Color { Color(red: 1, green: 0.8, blue: 0.32) }
+
+    private func startReply(_ item: CapturedNotification) {
+        commandEchoTask?.cancel()
+        replyText = ""
+        withAnimation(.easeOut(duration: 0.16)) { replyPhase = .opening }
+        resizeSurface(to: preferredSize, animation: .easeOut(duration: 0.16))
+        notificationMonitor.beginReply(to: item) { start in
+            switch start {
+            case .inNotch:
+                withAnimation(.easeOut(duration: 0.16)) { replyPhase = .typing }
+                focusNotchForTyping()
+            case .onBanner:
+                finishNotificationAction(.handedOff(localized("macOS'un yanıt kutusu açıldı", "macOS's reply box is open")))
+            case .unavailable:
+                notificationMonitor.openApplication(for: item)
+                finishNotificationAction(.handedOff(localized("Uygulamada yanıtla", "Reply in the app")))
+            }
+        }
+    }
+
+    private func sendReply() {
+        let text = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard replyPhase == .typing, !text.isEmpty else { return }
+        replyPhase = .sending
+        notificationMonitor.sendReply(text) { sent in
+            finishNotificationAction(sent
+                ? .done(localized("Gönderildi", "Sent"))
+                : .handedOff(localized("macOS'un kutusundan gönder", "Send it from macOS's box")))
+        }
+    }
+
+    private func cancelReply() {
+        guard replyPhase == .typing || replyPhase == .opening else { return }
+        notificationMonitor.cancelReply()
+        releaseTypingFocus()
+        withAnimation(.easeOut(duration: 0.16)) { replyPhase = .none }
+        resizeSurface(to: preferredSize, animation: .easeOut(duration: 0.16))
+        scheduleEchoHide(after: 2)
+    }
+
+    private func performNotificationAction(_ action: NotificationAction, on item: CapturedNotification) {
+        commandEchoTask?.cancel()
+        notificationMonitor.perform(action, on: item) { done in
+            if done {
+                finishNotificationAction(.done(action.title))
+            } else {
+                // The banner already went into Notification Center.
+                notificationMonitor.openApplication(for: item)
+                finishNotificationAction(.handedOff(localized("Uygulama açıldı", "Opened the app")))
+            }
+        }
+    }
+
+    private func finishNotificationAction(_ phase: ReplyPhase) {
+        releaseTypingFocus()
+        withAnimation(.easeOut(duration: 0.16)) { replyPhase = phase }
+        resizeSurface(to: preferredSize, animation: .easeOut(duration: 0.16))
+        isEchoHovered = false
+        scheduleEchoHide(after: 1.4)
+    }
+
+    /// A non-activating panel takes typing without bringing islo. forward,
+    /// so the app the user is in stays in front.
+    private func focusNotchForTyping() {
+        notchPanel?.makeKey()
+        DispatchQueue.main.async { isReplyFieldFocused = true }
+    }
+
+    /// Hands the keyboard back to the app the user was in.
+    private func releaseTypingFocus() {
+        isReplyFieldFocused = false
+        if notchPanel?.isKeyWindow == true {
+            NSWorkspace.shared.frontmostApplication?.activate(options: [])
+        }
+    }
+
+    private var notchPanel: NSWindow? {
+        NSApp.windows.first { $0.identifier?.rawValue == "isloFloatingNotch" }
     }
 
     private var systemEchoHUD: some View {
@@ -3056,10 +3480,15 @@ struct DynamicNotchView: View {
             } else {
                 HStack(spacing: 12) {
                     commandEchoLeading
-                    Spacer(minLength: 8)
+                    if let value = commandEchoValue, !isPowerEcho {
+                        // No camera housing in the middle: show the level.
+                        echoLevelBar(value)
+                    } else {
+                        Spacer(minLength: 8)
+                    }
                     commandEchoTrailing
                 }
-                .padding(.horizontal, 18)
+                .padding(.horizontal, bodyPadding(18, gap: 12))
             }
         }
         .foregroundStyle(.white)
@@ -3149,6 +3578,21 @@ struct DynamicNotchView: View {
         }
     }
 
+    private func echoLevelBar(_ value: Double) -> some View {
+        Capsule()
+            .fill(Color.white.opacity(0.16))
+            .overlay(alignment: .leading) {
+                GeometryReader { geometry in
+                    Capsule()
+                        .fill(Color.white)
+                        .frame(width: max(geometry.size.width * min(max(value, 0), 1), 5))
+                }
+            }
+            .frame(height: 5)
+            .animation(.spring(response: 0.22, dampingFraction: 0.9), value: value)
+            .accessibilityHidden(true)
+    }
+
     private var commandEchoLeading: some View {
         HStack(spacing: 9) {
             if case .timerFinished = displayedEcho {
@@ -3207,7 +3651,7 @@ struct DynamicNotchView: View {
             case .pluggedIn(let level, _), .unplugged(let level), .low(let level): Double(level) / 100
             }
         case .copied, .pasted, .screenshot, .capsLock, .mediaSkip, .trackChanged, .notification,
-             .timerFinished, .upcomingEvent, .headphones, .privacy, .screenshotPreview, .downloadFinished: nil
+             .timerFinished, .upcomingEvent, .headphones, .privacy, .screenshotPreview, .downloadFinished, .rain: nil
         }
     }
 
@@ -3224,6 +3668,7 @@ struct DynamicNotchView: View {
             : localized("Önceki parça", "Previous track")
         case .trackChanged(let title, _): title
         case .notification(let item): item.appName
+        case .rain(let outlook): rainStartText(outlook)
         case .upcomingEvent(let event): event.title
         case .headphones(let battery): battery.name
         case .privacy(let usage): usage.appName ?? privacyKindText(usage)
@@ -3253,6 +3698,7 @@ struct DynamicNotchView: View {
         case .mediaSkip: localized("Parça değiştiriliyor", "Changing track")
         case .trackChanged: artistTitle
         case .notification(let item): item.headline
+        case .rain: localized("Şemsiyeni al", "Take an umbrella")
         case .upcomingEvent(let event): eventTimeText(event, now: Date())
         case .headphones: localized("Bağlandı", "Connected")
         case .privacy(let usage): privacyDetailText(usage)
@@ -3287,16 +3733,18 @@ struct DynamicNotchView: View {
         case .privacy: isAllowed = settings.privacyIndicatorEnabled
         case .screenshotPreview: isAllowed = settings.screenshotPreviewEnabled
         case .downloadFinished: isAllowed = settings.downloadsEnabled
+        case .rain: isAllowed = settings.weatherEnabled && settings.rainAlertsEnabled
         // The preview replaces the plain "Screenshot captured" echo.
         case .screenshot: isAllowed = settings.dashboardCommandEchoEnabled && !settings.screenshotPreviewEnabled
         default: isAllowed = settings.dashboardCommandEchoEnabled
         }
-        guard isAllowed, presentation == .idle else { return }
+        guard isAllowed, presentation == .idle, !isReplyActive else { return }
         // Volume, copy and the like never cover a notification, a meeting,
         // a finished timer or a device/privacy alert that is showing.
         if isCommandEchoVisible, displayedEcho.isImportant, !incoming.isImportant { return }
         commandEchoTask?.cancel()
         displayedEcho = incoming
+        replyPhase = .none
         displayedEchoRevision &+= 1
         echoActionDone = nil
         let echoAnimation: Animation = reduceMotion
@@ -3308,13 +3756,17 @@ struct DynamicNotchView: View {
         resizeSurface(to: preferredSize, animation: echoAnimation)
         let duration: Double
         switch incoming {
-        case .notification, .headphones: duration = 4.5
+        case .notification(let item):
+            // VIPs stay longer; buttons need time to be reached.
+            duration = settings.isVIP(item) ? 9 : (item.actions.isEmpty ? 4.5 : 7)
+        case .headphones: duration = 4.5
         case .timerFinished: duration = 5
         case .upcomingEvent: duration = 10
         case .power: duration = 3
         case .privacy: duration = 3.5
         case .screenshotPreview: duration = 7
         case .downloadFinished: duration = 6
+        case .rain: duration = 7
         case .screenshot: duration = 3.2
         case .trackChanged: duration = 2.2
         default: duration = 1.45
@@ -3333,7 +3785,7 @@ struct DynamicNotchView: View {
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                guard !isEchoHovered else { return }
+                guard !isEchoHovered, !isReplyActive else { return }
                 withAnimation(echoAnimation) {
                     isCommandEchoVisible = false
                 }
@@ -3360,7 +3812,9 @@ struct DynamicNotchView: View {
     private var isInteractiveEchoVisible: Bool {
         guard isCommandEchoVisible else { return false }
         switch displayedEcho {
-        case .screenshotPreview, .downloadFinished, .upcomingEvent: return true
+        case .screenshotPreview, .downloadFinished, .upcomingEvent, .rain: return true
+        case .notification(let item):
+            return settings.notificationPreviewStyle == .content && !item.actions.isEmpty
         default: return false
         }
     }
@@ -3841,10 +4295,9 @@ struct DynamicNotchView: View {
             return isPointerInside
         }
 
-        let topGap: CGFloat = screen.safeAreaInsets.top > 0 ? 0 : 6
         let frame = NSRect(
             x: screen.frame.midX - size.width / 2,
-            y: screen.frame.maxY - topGap - size.height,
+            y: screen.frame.maxY - size.height,
             width: size.width,
             height: size.height
         )
@@ -3981,7 +4434,13 @@ struct DynamicNotchView: View {
     }
 
     private var basePreferredSize: CGSize {
-        layout.size(for: presentation, idleMode: effectiveIdleMode)
+        if presentation == .idle, idleActivity == .privacy, layout.hasCameraHousing {
+            return CGSize(
+                width: layout.cameraHousingWidth + idleWingWidth * 2,
+                height: layout.notchBandHeight
+            )
+        }
+        return layout.size(for: presentation, idleMode: effectiveIdleMode)
     }
 
     /// Visible Island means "visible while music plays"; otherwise the notch
@@ -3999,12 +4458,20 @@ struct DynamicNotchView: View {
     private var commandEchoPreferredSize: CGSize {
         // A notification with its content gets a second row under the
         // camera housing for the title and message.
-        if case .notification = displayedEcho,
+        if case .notification(let item) = displayedEcho,
            settings.notificationPreviewStyle == .content {
             let width = layout.hasCameraHousing
                 ? min(max(layout.cameraHousingWidth + 340, 520), layout.screenWidth - 24)
                 : min(440, layout.screenWidth - 24)
-            let height = layout.hasCameraHousing ? layout.notchBandHeight + 46 : 76
+            let actionRow: CGFloat = showsNotificationActionRow(item) ? 38 : 0
+            let height = (layout.hasCameraHousing ? layout.notchBandHeight + 46 : 76) + actionRow
+            return CGSize(width: width, height: height)
+        }
+        if case .rain = displayedEcho {
+            let width = layout.hasCameraHousing
+                ? min(max(layout.cameraHousingWidth + 330, 510), layout.screenWidth - 24)
+                : min(430, layout.screenWidth - 24)
+            let height = (layout.hasCameraHousing ? layout.notchBandHeight : 34) + 56
             return CGSize(width: width, height: height)
         }
         if case .screenshotPreview = displayedEcho {
@@ -4047,19 +4514,17 @@ struct DynamicNotchView: View {
         return CGSize(width: width, height: height)
     }
 
-    /// On a notched display the shoulder curves pull the body in from both
-    /// panel edges; content must start inside that inset to stay visible.
+    /// The shoulder curves pull the body in from both panel edges; content
+    /// must start inside that inset to stay visible.
     private var bodyInset: CGFloat {
-        guard layout.hasCameraHousing else { return 0 }
-        return AdaptiveNotchShape.topFilletRadius(
+        AdaptiveNotchShape.topFilletRadius(
             progress: expansionProgress,
             size: preferredSize
         )
     }
 
     private var bodyBottomRadius: CGFloat {
-        guard layout.hasCameraHousing else { return 0 }
-        return AdaptiveNotchShape.bottomRadius(
+        AdaptiveNotchShape.bottomRadius(
             progress: expansionProgress,
             size: preferredSize
         )
@@ -4070,9 +4535,14 @@ struct DynamicNotchView: View {
         max(minimum, bodyInset + gap)
     }
 
+    /// Resting and hidden: nothing is drawn, only the pointer is sensed.
+    private var isSurfaceConcealed: Bool {
+        isHiddenMiniIdle && isIdleSurfaceConcealed
+            && !isCommandEchoVisible && !isFileDropHUDVisible
+    }
+
     private var isHiddenMiniIdle: Bool {
-        layout.hasCameraHousing &&
-            effectiveIdleMode == .hiddenMini &&
+        effectiveIdleMode == .hiddenMini &&
             presentation == .idle
     }
 
@@ -4094,12 +4564,8 @@ struct DynamicNotchView: View {
 
     private var panelColor: Color { .black }
 
-    private var panelOpacity: Double {
-        if reduceTransparency || layout.hasCameraHousing {
-            return 1
-        }
-        return 0.96
-    }
+    /// Solid, like the notch it stands for, with or without a camera housing.
+    private var panelOpacity: Double { 1 }
 
     private var presentationAnimation: Animation {
         if reduceMotion {
@@ -4185,7 +4651,9 @@ struct DynamicNotchView: View {
 /// A single continuously animatable silhouette keeps its top edge attached to
 /// the physical camera housing while its shoulders, width, and lower corners
 /// expand. This avoids visually swapping between unrelated compact/expanded
-/// paths and makes the camera housing itself appear to become islo.
+/// paths and makes the camera housing itself appear to become islo. A display
+/// without a notch gets the same profile hanging from its top edge, so islo.
+/// looks like a notch there too and its corners never cut into the content.
 private struct AdaptiveNotchShape: Shape {
     let layout: NotchLayout
     var expansionProgress: CGFloat
@@ -4197,20 +4665,6 @@ private struct AdaptiveNotchShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         let progress = min(max(expansionProgress, 0), 1)
-
-        guard layout.hasCameraHousing else {
-            let compactRadius = rect.height / 2
-            let radius = interpolate(
-                from: compactRadius,
-                to: 28,
-                progress: progress
-            )
-            return Path(
-                roundedRect: rect,
-                cornerRadius: radius
-            )
-        }
-
         return cameraConnectedPath(in: rect, progress: progress)
     }
 
@@ -4269,14 +4723,6 @@ private struct AdaptiveNotchShape: Shape {
             (size.width - fillet * 2) / 2,
             size.height - fillet
         ))
-    }
-
-    private func interpolate(
-        from start: CGFloat,
-        to end: CGFloat,
-        progress: CGFloat
-    ) -> CGFloat {
-        start + (end - start) * progress
     }
 }
 
@@ -4380,6 +4826,32 @@ private struct BatteryGlyph: View {
                     pulse = true
                 }
             }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// Quarter-hour rain for the next two hours, as bars that grow with the
+/// amount.
+private struct RainBars: View {
+    let slots: [Double]
+
+    var body: some View {
+        GeometryReader { geometry in
+            let count = max(slots.count, 1)
+            let spacing: CGFloat = 4
+            let width = (geometry.size.width - spacing * CGFloat(count - 1)) / CGFloat(count)
+            HStack(alignment: .bottom, spacing: spacing) {
+                ForEach(Array(slots.enumerated()), id: \.offset) { _, amount in
+                    let level = min(max(amount / 1.5, 0), 1)
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .fill(amount >= 0.1
+                              ? Color(red: 0.4, green: 0.68, blue: 1).opacity(0.55 + level * 0.45)
+                              : Color.white.opacity(0.14))
+                        .frame(width: max(width, 1), height: max(3, geometry.size.height * level))
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .bottomLeading)
         }
         .accessibilityHidden(true)
     }

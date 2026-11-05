@@ -39,6 +39,7 @@ enum CommandEchoKind: Equatable {
     case mediaSkip(MediaSkipDirection)
     case trackChanged(String, MediaSkipDirection?)
     case notification(CapturedNotification)
+    case rain(RainOutlook)
 
     var symbolName: String {
         switch self {
@@ -52,6 +53,7 @@ enum CommandEchoKind: Equatable {
         case .mediaSkip(let direction): direction.symbolName
         case .trackChanged(_, let direction): direction?.symbolName ?? "music.note"
         case .notification: "bell.fill"
+        case .rain: "cloud.rain.fill"
         case .upcomingEvent: "calendar"
         case .power(let event):
             switch event {
@@ -77,7 +79,7 @@ enum CommandEchoKind: Equatable {
     var isImportant: Bool {
         switch self {
         case .notification, .upcomingEvent, .timerFinished, .headphones, .privacy, .power,
-             .screenshotPreview, .downloadFinished: true
+             .screenshotPreview, .downloadFinished, .rain: true
         case .volume, .brightness, .copied, .pasted, .screenshot, .capsLock, .mediaSkip, .trackChanged: false
         }
     }
@@ -161,6 +163,10 @@ final class CommandEchoManager: ObservableObject {
 
     func showScreenshot(_ capture: ScreenshotCapture) {
         publish(.screenshotPreview(capture))
+    }
+
+    func showRain(_ outlook: RainOutlook) {
+        publish(.rain(outlook))
     }
 
     func showDownloadFinished(_ download: FinishedDownload) {
@@ -770,10 +776,34 @@ final class SystemBannerHider {
         return body()
     }
 
+    private var holding = false
+    private var showing = false
+    private var muted: Set<String> = []
+
+    /// A reply is being typed from the notch into this banner's reply box;
+    /// it stays off screen however long that takes.
+    var holdsHidden: Bool {
+        get { locked { holding } }
+        set { locked { holding = newValue } }
+    }
+
+    /// macOS's own banner is wanted on screen (its reply box) until macOS
+    /// closes it.
+    var keepsVisible: Bool {
+        get { locked { showing } }
+        set { locked { showing = newValue } }
+    }
+
+    /// Apps whose notifications the notch leaves to macOS.
+    var mutedApps: Set<String> {
+        get { locked { muted } }
+        set { locked { muted = newValue } }
+    }
+
     private var firstSeen: [String: Date] = [:]
     private var moved: (window: AXUIElement, original: CGPoint)?
 
-    func update(window: AXUIElement, keys: [String], unreadable: Int, isCenterOpen: Bool) {
+    func update(window: AXUIElement, keys: [String], appNames: [String], unreadable: Int, isCenterOpen: Bool) {
         guard !isCenterOpen else {
             // macOS normally moves the window back itself to show its
             // panel; make sure it's never left off screen.
@@ -794,10 +824,19 @@ final class SystemBannerHider {
         // would show it, so leave it until macOS closes the window.
         if keys.isEmpty && unreadable == 0 { return }
 
-        let isWaiting = firstSeen.values.contains { now.timeIntervalSince($0) > Self.waitingAfter }
+        if keepsVisible {
+            restore()
+            return
+        }
+        // A reply typed in the notch can take a while; that banner isn't
+        // waiting for an answer from macOS's side.
+        let isWaiting = !holdsHidden
+            && firstSeen.values.contains { now.timeIntervalSince($0) > Self.waitingAfter }
+        // Apps the notch leaves to macOS keep macOS's banner.
+        let hasMuted = !mutedApps.isDisjoint(with: appNames)
         // Banners islo. couldn't read stay visible, as do alerts that wait
         // for an answer.
-        if unreadable > 0 || isWaiting {
+        if unreadable > 0 || isWaiting || hasMuted {
             restore()
         } else if isAllowed {
             hide(window)
@@ -811,6 +850,7 @@ final class SystemBannerHider {
     func windowsClosed() {
         firstSeen.removeAll()
         moved = nil
+        keepsVisible = false
     }
 
     func restore() {
@@ -842,6 +882,28 @@ final class SystemBannerHider {
     }
 }
 
+/// The reply box of a macOS banner the notch is typing into. Used on the
+/// notification scan queue only.
+final class BannerReplySession {
+    var window: AXUIElement?
+    var field: AXUIElement?
+}
+
+/// A button macOS shows on a notification ("Reply", "Mark as Read"…).
+struct NotificationAction: Equatable, Hashable {
+    /// The Accessibility action that presses it.
+    let name: String
+    /// Its title, in the system's language.
+    let title: String
+
+    /// Message apps' Reply; the notch types the answer itself.
+    var isReply: Bool {
+        Self.replyTitles.contains(title.lowercased())
+    }
+
+    static let replyTitles: Set<String> = ["yanıtla", "yanitla", "cevapla", "yanıt ver", "reply", "respond"]
+}
+
 /// A notification macOS showed as a banner, read through Accessibility.
 struct CapturedNotification: Identifiable, Equatable {
     let id: String
@@ -851,6 +913,12 @@ struct CapturedNotification: Identifiable, Equatable {
     let subtitle: String
     let body: String
     let date: Date
+    /// The banner's own buttons, reachable while macOS shows it.
+    var actions: [NotificationAction] = []
+
+    var replyAction: NotificationAction? { actions.first(where: \.isReply) }
+    /// Other buttons, "Reply" aside.
+    var otherActions: [NotificationAction] { actions.filter { !$0.isReply } }
 
     /// The line to lead with: the title, or the body when there's no title.
     var headline: String { title.isEmpty ? body : title }
@@ -888,6 +956,10 @@ final class NotificationMonitor: ObservableObject {
     private var observer: AXObserver?
     private var observedProcess: pid_t = 0
     private let hider = SystemBannerHider()
+    /// The reply box being typed into from the notch (scan queue only).
+    private let replySession = BannerReplySession()
+    private var mutedApps: Set<String> = []
+    private var loggedActionApps: Set<String> = []
     private var hidesSystemBanners = false
     private var isNotchReady = true
     private var isNotchVisible = true
@@ -940,6 +1012,13 @@ final class NotificationMonitor: ObservableObject {
         wasHiding = isOn
     }
 
+    /// Apps whose notifications stay with macOS: not shown or listed here,
+    /// and macOS's banner isn't hidden for them.
+    func setMutedApps(_ apps: [String]) {
+        mutedApps = Set(apps)
+        hider.mutedApps = mutedApps
+    }
+
     func markAllRead() {
         if unreadCount != 0 { unreadCount = 0 }
     }
@@ -951,6 +1030,16 @@ final class NotificationMonitor: ObservableObject {
 
     func remove(_ item: CapturedNotification) {
         items.removeAll { $0.id == item.id }
+    }
+
+    /// Drops notifications that arrived more than `interval` ago.
+    func removeItems(olderThan interval: TimeInterval?) {
+        guard let interval, !items.isEmpty else { return }
+        let cutoff = Date().addingTimeInterval(-interval)
+        guard items.contains(where: { $0.date < cutoff }) else { return }
+        items.removeAll { $0.date < cutoff }
+        // The unread ones are the newest, so the count can only shrink.
+        unreadCount = min(unreadCount, items.count)
     }
 
     func openApplication(for item: CapturedNotification) {
@@ -1044,7 +1133,19 @@ final class NotificationMonitor: ObservableObject {
         // banners arriving a few at a time are real new notifications.
         guard !fresh.isEmpty, fresh.count <= 3 else { return }
 
-        let captured = fresh.map { banner in
+        // Settings lists the apps that send notifications, muted ones too.
+        for name in Set(fresh.map(\.appName)) where !name.isEmpty {
+            AppSettings.shared.noteNotificationApp(name)
+        }
+        let wanted = fresh.filter { !mutedApps.contains($0.appName) }
+        guard !wanted.isEmpty else { return }
+        for banner in wanted where !banner.actions.isEmpty && !loggedActionApps.contains(banner.appName) {
+            loggedActionApps.insert(banner.appName)
+            let titles = banner.actions.map(\.title).joined(separator: ", ")
+            notificationLog.info("Buttons on \(banner.appName, privacy: .public) notifications: \(titles, privacy: .public)")
+        }
+
+        let captured = wanted.map { banner in
             CapturedNotification(
                 id: banner.key,
                 appName: banner.appName,
@@ -1052,7 +1153,8 @@ final class NotificationMonitor: ObservableObject {
                 title: banner.title,
                 subtitle: banner.subtitle,
                 body: banner.body,
-                date: .now
+                date: .now,
+                actions: banner.actions
             )
         }
         items.insert(contentsOf: captured.reversed(), at: 0)
@@ -1074,6 +1176,7 @@ final class NotificationMonitor: ObservableObject {
         let title: String
         let subtitle: String
         let body: String
+        var actions: [NotificationAction] = []
 
         /// A stack keeps its identifier while new messages replace its top
         /// one (e.g. several WhatsApp messages from one chat), so the text
@@ -1102,6 +1205,7 @@ final class NotificationMonitor: ObservableObject {
             hider.update(
                 window: window,
                 keys: windowScan.banners.map(\.key),
+                appNames: windowScan.banners.map(\.appName),
                 unreadable: windowScan.unreadable.count,
                 isCenterOpen: windowScan.isCenterOpen
             )
@@ -1172,8 +1276,293 @@ final class NotificationMonitor: ObservableObject {
         }
         var id = string(element, kAXIdentifierAttribute) ?? ""
         if id.isEmpty { id = appName }
-        return RawBanner(id: id, appName: appName, title: title, subtitle: subtitle, body: body)
+        return RawBanner(
+            id: id, appName: appName, title: title, subtitle: subtitle, body: body,
+            actions: buttons(of: element)
+        )
     }
+
+    // MARK: Buttons and replies
+
+    /// Button titles that aren't actions on the message itself.
+    private static let ignoredButtonTitles: Set<String> = [
+        "kapat", "close", "göster", "show", "seçenekler", "options", "temizle", "clear",
+        "tümünü temizle", "clear all", "ayrıntıları göster", "show details", "daha az göster", "show less"
+    ]
+
+    /// The named actions on a banner (or the banner inside a stack).
+    nonisolated private static func buttons(of element: AXUIElement) -> [NotificationAction] {
+        let own = namedActions(of: element)
+        if !own.isEmpty { return own }
+        for child in children(of: element) where (string(child, kAXSubroleAttribute) ?? "").hasPrefix("AXNotificationCenter") {
+            let nested = namedActions(of: child)
+            if !nested.isEmpty { return nested }
+        }
+        return []
+    }
+
+    nonisolated private static func namedActions(of element: AXUIElement) -> [NotificationAction] {
+        var names: CFArray?
+        guard AXUIElementCopyActionNames(element, &names) == .success,
+              let list = names as? [String] else { return [] }
+        return list.compactMap { name in
+            guard name.hasPrefix("Name:") else { return nil }
+            var described: CFString?
+            var title = ""
+            if AXUIElementCopyActionDescription(element, name as CFString, &described) == .success,
+               let described = described as String? {
+                title = described
+            }
+            if title.isEmpty || title == name {
+                title = String(name.dropFirst("Name:".count)).components(separatedBy: "\n").first ?? ""
+            }
+            title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !title.isEmpty, !ignoredButtonTitles.contains(title.lowercased()) else { return nil }
+            return NotificationAction(name: name, title: title)
+        }
+    }
+
+    private var notificationCenterPID: pid_t? {
+        NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.notificationcenterui")
+            .first?.processIdentifier
+    }
+
+    /// The banner on screen with this notification's key.
+    nonisolated private static func locateBanner(key: String, processIdentifier pid: pid_t) -> AXUIElement? {
+        let application = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(application, 0.25)
+        for window in children(of: application) where string(window, kAXSubroleAttribute) == "AXSystemDialog" {
+            if let found = locateBanner(key: key, in: window, depth: 0) { return found }
+        }
+        return nil
+    }
+
+    nonisolated private static func locateBanner(key: String, in element: AXUIElement, depth: Int) -> AXUIElement? {
+        guard depth < 10 else { return nil }
+        if (string(element, kAXSubroleAttribute) ?? "").hasPrefix("AXNotificationCenter") {
+            return banner(from: element)?.key == key ? element : nil
+        }
+        for child in children(of: element) {
+            if let found = locateBanner(key: key, in: child, depth: depth + 1) { return found }
+        }
+        return nil
+    }
+
+    /// Presses a named action on the banner, or on the banner in a stack.
+    nonisolated private static func press(_ name: String, on banner: AXUIElement) -> Bool {
+        if AXUIElementPerformAction(banner, name as CFString) == .success { return true }
+        for child in children(of: banner)
+        where AXUIElementPerformAction(child, name as CFString) == .success {
+            return true
+        }
+        return false
+    }
+
+    /// Where to type in an open reply box: the first editable text in a
+    /// banner window.
+    nonisolated private static func replyField(processIdentifier pid: pid_t) -> (window: AXUIElement, field: AXUIElement)? {
+        let application = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(application, 0.25)
+        for window in children(of: application) where string(window, kAXSubroleAttribute) == "AXSystemDialog" {
+            if let field = firstElement(in: window, depth: 0, where: { element in
+                let role = string(element, kAXRoleAttribute) ?? ""
+                guard role == kAXTextAreaRole as String || role == kAXTextFieldRole as String else { return false }
+                var settable: DarwinBoolean = false
+                return AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable) == .success
+                    && settable.boolValue
+            }) {
+                return (window, field)
+            }
+        }
+        return nil
+    }
+
+    nonisolated private static func firstElement(
+        in element: AXUIElement,
+        depth: Int,
+        where matches: (AXUIElement) -> Bool
+    ) -> AXUIElement? {
+        guard depth < 12 else { return nil }
+        if matches(element) { return element }
+        for child in children(of: element) {
+            if let found = firstElement(in: child, depth: depth + 1, where: matches) { return found }
+        }
+        return nil
+    }
+
+    /// A button in the reply box by its title, description or identifier.
+    nonisolated private static func button(in window: AXUIElement, matching words: Set<String>) -> AXUIElement? {
+        firstElement(in: window, depth: 0) { element in
+            guard string(element, kAXRoleAttribute) == kAXButtonRole as String else { return false }
+            let labels = [kAXTitleAttribute, kAXDescriptionAttribute, kAXIdentifierAttribute]
+                .compactMap { string(element, $0)?.lowercased() }
+            return labels.contains { label in words.contains { label == $0 || label.contains($0) } }
+        }
+    }
+
+    /// The reply box's buttons and fields, once, so a macOS that names
+    /// them differently shows up in the log.
+    nonisolated private static func logReplyBox(_ window: AXUIElement) {
+        var parts: [String] = []
+        func walk(_ element: AXUIElement, _ depth: Int) {
+            guard depth < 12, parts.count < 40 else { return }
+            let role = string(element, kAXRoleAttribute) ?? ""
+            if role == kAXButtonRole as String || role == kAXTextAreaRole as String || role == kAXTextFieldRole as String {
+                let label = [kAXTitleAttribute, kAXDescriptionAttribute, kAXIdentifierAttribute]
+                    .compactMap { string(element, $0) }.filter { !$0.isEmpty }.joined(separator: "/")
+                parts.append("\(role)(\(label))")
+            }
+            for child in children(of: element) { walk(child, depth + 1) }
+        }
+        walk(window, 0)
+        notificationLog.info("Reply box: \(parts.joined(separator: ", "), privacy: .public)")
+    }
+
+    enum ReplyStart {
+        /// The notch types into macOS's reply box.
+        case inNotch
+        /// macOS's own reply box is back on screen.
+        case onBanner
+        /// The banner is gone; the app has to be opened.
+        case unavailable
+    }
+
+    /// Presses one of the notification's buttons on macOS's banner. False
+    /// once the banner has gone into Notification Center.
+    func perform(_ action: NotificationAction, on item: CapturedNotification, completion: @escaping (Bool) -> Void) {
+        #if DEBUG
+        if item.id.hasPrefix("debug-") { completion(true); return }
+        #endif
+        guard let pid = notificationCenterPID else { completion(false); return }
+        let key = item.id
+        scanQueue.async {
+            let done = Self.locateBanner(key: key, processIdentifier: pid).map { Self.press(action.name, on: $0) } ?? false
+            DispatchQueue.main.async { completion(done) }
+        }
+    }
+
+    /// Opens the banner's reply box. islo. then types into it from the
+    /// notch, or, when it can't find where to type, brings macOS's box on
+    /// screen.
+    func beginReply(to item: CapturedNotification, completion: @escaping (ReplyStart) -> Void) {
+        #if DEBUG
+        if item.id.hasPrefix("debug-") { completion(.inNotch); return }
+        #endif
+        guard let action = item.replyAction, let pid = notificationCenterPID else {
+            completion(.unavailable)
+            return
+        }
+        let key = item.id
+        let hider = hider
+        let session = replySession
+        scanQueue.async {
+            guard let banner = Self.locateBanner(key: key, processIdentifier: pid),
+                  Self.press(action.name, on: banner) else {
+                DispatchQueue.main.async { completion(.unavailable) }
+                return
+            }
+            hider.holdsHidden = true
+            // macOS turns the banner into its reply box; wait for the field.
+            var found: (window: AXUIElement, field: AXUIElement)?
+            for _ in 0..<12 {
+                found = Self.replyField(processIdentifier: pid)
+                if found != nil { break }
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            if let found {
+                Self.logReplyBox(found.window)
+                session.window = found.window
+                session.field = found.field
+                DispatchQueue.main.async { completion(.inNotch) }
+            } else {
+                notificationLog.info("No reply field after Reply; showing macOS's banner")
+                hider.holdsHidden = false
+                hider.keepsVisible = true
+                hider.restore()
+                DispatchQueue.main.async { completion(.onBanner) }
+            }
+        }
+    }
+
+    /// Writes the reply into macOS's box and sends it. When macOS doesn't
+    /// take it, its box comes on screen with the text in it.
+    func sendReply(_ text: String, completion: @escaping (Bool) -> Void) {
+        let hider = hider
+        let session = replySession
+        scanQueue.async {
+            #if DEBUG
+            if session.window == nil {
+                DispatchQueue.main.async { completion(true) }
+                return
+            }
+            #endif
+            var sent = false
+            if let window = session.window, let field = session.field {
+                AXUIElementSetAttributeValue(field, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+                if AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, text as CFString) == .success {
+                    if let send = Self.button(in: window, matching: ["gönder", "send"]) {
+                        sent = AXUIElementPerformAction(send, kAXPressAction as CFString) == .success
+                    }
+                    if !sent {
+                        sent = AXUIElementPerformAction(field, kAXConfirmAction as CFString) == .success
+                    }
+                }
+            }
+            session.window = nil
+            session.field = nil
+            hider.holdsHidden = false
+            if !sent {
+                notificationLog.info("Couldn't send the reply from the notch; showing macOS's box")
+                hider.keepsVisible = true
+                hider.restore()
+            }
+            DispatchQueue.main.async { completion(sent) }
+        }
+    }
+
+    /// Leaves the reply: macOS's box is closed with its own Cancel, or
+    /// shown so it isn't left open off screen.
+    func cancelReply() {
+        let hider = hider
+        let session = replySession
+        scanQueue.async {
+            if let window = session.window {
+                if let cancel = Self.button(in: window, matching: ["vazgeç", "iptal", "cancel"]),
+                   AXUIElementPerformAction(cancel, kAXPressAction as CFString) == .success {
+                    // Closed.
+                } else {
+                    hider.keepsVisible = true
+                    hider.restore()
+                }
+            }
+            session.window = nil
+            session.field = nil
+            hider.holdsHidden = false
+        }
+    }
+
+    #if DEBUG
+    /// Debug builds: a notification with Reply and Mark as Read.
+    func debugInject() {
+        let item = CapturedNotification(
+            id: "debug-\(UUID().uuidString)",
+            appName: "WhatsApp",
+            bundleIdentifier: nil,
+            title: "Ahmet",
+            subtitle: "",
+            body: "Akşam geliyor musun?",
+            date: .now,
+            actions: [
+                NotificationAction(name: "debug-reply", title: "Yanıtla"),
+                NotificationAction(name: "debug-read", title: "Okundu olarak işaretle")
+            ]
+        )
+        items.insert(item, at: 0)
+        unreadCount += 1
+        latest = item
+        announcementRevision &+= 1
+    }
+    #endif
 
     /// Named texts ("title", "subtitle", "body") anywhere under a banner.
     nonisolated private static func collectTexts(
@@ -1505,6 +1894,9 @@ final class FileShelfManager: ObservableObject {
     /// True while the user holds files being dragged anywhere on screen.
     @Published private(set) var isFileDragActive = false
     private let defaultsKey = "dashboard.fileShelf.items"
+    /// When each file went on the shelf, by path, for clearing it later.
+    private let addedKey = "dashboard.fileShelf.addedAt"
+    private var addedAt: [String: Date] = [:]
     private var dragMonitors: [Any] = []
     private var dragPasteboardChangeCount = NSPasteboard(name: .drag).changeCount
     private var dragEndTimer: Timer?
@@ -1572,7 +1964,13 @@ final class FileShelfManager: ObservableObject {
         items = paths.map(URL.init(fileURLWithPath:)).filter {
             FileManager.default.fileExists(atPath: $0.path)
         }
+        let stored = UserDefaults.standard.dictionary(forKey: addedKey) as? [String: Double] ?? [:]
+        // Files shelved before islo. kept dates count from now.
+        for url in items {
+            addedAt[url.path] = stored[url.path].map(Date.init(timeIntervalSince1970:)) ?? Date()
+        }
         items.forEach(makeThumbnail)
+        persist()
     }
 
     func receive(_ providers: [NSItemProvider]) -> Bool {
@@ -1596,6 +1994,7 @@ final class FileShelfManager: ObservableObject {
         items.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
         items.insert(url, at: 0)
         items = Array(items.prefix(60))
+        addedAt[url.path] = Date()
         persist()
         makeThumbnail(url)
     }
@@ -1610,6 +2009,18 @@ final class FileShelfManager: ObservableObject {
     func clear() {
         items.removeAll()
         thumbnails.removeAll()
+        persist()
+    }
+
+    /// Takes files off the shelf `interval` after they were added; the files
+    /// themselves stay where they are.
+    func removeItems(olderThan interval: TimeInterval?) {
+        guard let interval, !items.isEmpty else { return }
+        let cutoff = Date().addingTimeInterval(-interval)
+        let expired = items.filter { (addedAt[$0.path] ?? Date()) < cutoff }
+        guard !expired.isEmpty else { return }
+        items.removeAll { expired.contains($0) }
+        expired.forEach { thumbnails[$0] = nil }
         persist()
     }
 
@@ -1686,7 +2097,10 @@ final class FileShelfManager: ObservableObject {
     }
 
     private func persist() {
-        UserDefaults.standard.set(items.map(\.path), forKey: defaultsKey)
+        let paths = items.map(\.path)
+        addedAt = addedAt.filter { paths.contains($0.key) }
+        UserDefaults.standard.set(addedAt.mapValues(\.timeIntervalSince1970), forKey: addedKey)
+        UserDefaults.standard.set(paths, forKey: defaultsKey)
     }
 
     /// Gathers URLs that item providers deliver on background queues.

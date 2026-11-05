@@ -271,6 +271,7 @@ struct SettingsView: View {
     @State private var selection: SettingsDestination = .general
     @State private var openFeature: Feature?
     @State private var weatherQuery = ""
+    @State private var vipDraft = ""
     @State private var weatherResults: [WeatherLocation] = []
     @State private var isSearchingWeather = false
 
@@ -734,7 +735,13 @@ struct SettingsView: View {
                 stackedRow(symbol: "text.bubble.fill", colors: Tint.red, title: text("Önizleme", "Preview"), subtitle: text("Çentik genişlediğinde bildirimin içeriği mi, yalnızca yeni bildirim geldiği mi görünsün?", "When the notch widens, show the notification's content or only that one arrived?")) {
                     ChipPicker(selection: $settings.notificationPreviewStyle, options: NotificationPreviewStyle.allCases.map { ($0, $0.title(language: settings.language)) }, accent: accent, fillsWidth: true)
                 }
+                divider
+                stackedRow(symbol: "clock.arrow.circlepath", colors: Tint.red, title: text("Otomatik temizle", "Clear automatically"), subtitle: text("Bu süreden eski bildirimler çentikteki listeden kalkar. Bildirim Merkezi'ndekiler olduğu gibi kalır.", "Notifications older than this leave the notch's list. Notification Center keeps its own.")) {
+                    ChipPicker(selection: $settings.notificationAutoClear, options: AutoClearInterval.allCases.map { ($0, $0.title(language: settings.language)) }, accent: accent, fillsWidth: true)
+                }
             }
+            notificationAppsSection
+            vipSection
             notificationTips
         case .calendar:
             section(text("Seçenekler", "Options")) {
@@ -763,8 +770,19 @@ struct SettingsView: View {
                 shortcutFavoritesPicker
             }
         case .weather:
+            section(text("Seçenekler", "Options")) {
+                row(symbol: "cloud.rain.fill", colors: Tint.sky, title: text("Yağmur uyarısı", "Rain alert"), subtitle: text("Yağmur bir saat içinde başlayacaksa çentik haber verir. Ana sayfada hava durumuna tıklayınca saatlik tahmin açılır.", "The notch tells you when rain starts within the hour. Click the weather on Home for the hourly forecast.")) {
+                    switchControl($settings.rainAlertsEnabled)
+                }
+            }
             section(text("Şehir", "City")) {
                 weatherCityPicker
+            }
+        case .shelf:
+            section(text("Seçenekler", "Options")) {
+                stackedRow(symbol: "clock.arrow.circlepath", colors: Tint.blue, title: text("Otomatik temizle", "Clear automatically"), subtitle: text("Rafa eklediğin dosyalar bu süre dolunca raftan kalkar. Dosyaların kendisi silinmez, yerinde kalır.", "Files leave the shelf this long after you add them. The files themselves aren't deleted.")) {
+                    ChipPicker(selection: $settings.shelfAutoClear, options: AutoClearInterval.allCases.map { ($0, $0.title(language: settings.language)) }, accent: accent, fillsWidth: true)
+                }
             }
         case .screenshots:
             section(text("Seçenekler", "Options")) {
@@ -819,6 +837,131 @@ struct SettingsView: View {
         case .weather: $settings.weatherEnabled
         case .lyrics: $settings.lyricsEnabled
         }
+    }
+
+    // MARK: Notification apps and VIPs
+
+    /// Every app that has sent a notification, with whether the notch shows
+    /// it or leaves it to macOS.
+    private var notificationAppsSection: some View {
+        section(text("Uygulamalar", "Apps")) {
+            if settings.knownNotificationApps.isEmpty {
+                tip(text("Bildirim gönderen uygulamalar burada listelenir; hangilerinin çentikte görüneceğini buradan seçersin.", "Apps that send notifications appear here, so you can choose which ones the notch shows."))
+            } else {
+                ForEach(Array(settings.knownNotificationApps.enumerated()), id: \.offset) { index, app in
+                    if index > 0 { divider }
+                    notificationAppRow(app)
+                }
+            }
+        }
+    }
+
+    private func notificationAppRow(_ app: String) -> some View {
+        let shown = Binding<Bool>(
+            get: { !settings.mutedNotificationApps.contains(app) },
+            set: { show in
+                if show {
+                    settings.mutedNotificationApps.removeAll { $0 == app }
+                } else if !settings.mutedNotificationApps.contains(app) {
+                    settings.mutedNotificationApps.append(app)
+                }
+            }
+        )
+        return HStack(spacing: 14) {
+            Group {
+                if let icon = Self.appIcon(named: app) {
+                    Image(nsImage: icon).resizable().interpolation(.high)
+                } else {
+                    IconTile(symbol: "app.badge.fill", colors: Tint.red)
+                }
+            }
+            .frame(width: 30, height: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(app).font(.system(size: 13.5, weight: .semibold))
+                Text(shown.wrappedValue
+                     ? text("Çentikte görünür", "Shows in the notch")
+                     : text("Çentikte görünmez; macOS gösterir", "Not in the notch; macOS shows it"))
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(IsloStyle.muted)
+            }
+            Spacer(minLength: 12)
+            switchControl(shown)
+                .accessibilityLabel(Text(app))
+        }
+        .padding(.vertical, 10)
+    }
+
+    private static func appIcon(named name: String) -> NSImage? {
+        if let running = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == name }),
+           let icon = running.icon {
+            return icon
+        }
+        for folder in ["/Applications", "/System/Applications", "/Applications/Utilities", "/System/Applications/Utilities"] {
+            let path = "\(folder)/\(name).app"
+            if FileManager.default.fileExists(atPath: path) { return NSWorkspace.shared.icon(forFile: path) }
+        }
+        return nil
+    }
+
+    private var vipSection: some View {
+        section(text("VIP kişiler", "VIP people")) {
+            stackedRow(symbol: "star.fill", colors: Tint.orange, title: text("Öne çıkanlar", "Stand out"), subtitle: text("Bu kişilerden gelen mesajlar çentikte altın rengiyle ve daha uzun süre görünür. Adı bildirimde göründüğü gibi yaz.", "Messages from these people show in gold and stay longer in the notch. Write the name as it appears in the notification.")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        TextField(text("Ad ekle, örn. Ahmet", "Add a name, e.g. Alex"), text: $vipDraft)
+                            .textFieldStyle(.plain)
+                            .onSubmit(addVIP)
+                            .padding(.horizontal, 11)
+                            .frame(height: 30)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.06)))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(IsloStyle.line, lineWidth: 1))
+                        Button(text("Ekle", "Add"), action: addVIP)
+                            .buttonStyle(IsloButtonStyle(prominent: true, accent: accent))
+                            .disabled(vipDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    if !settings.vipNames.isEmpty {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8, alignment: .leading)], alignment: .leading, spacing: 8) {
+                            ForEach(settings.vipNames, id: \.self) { name in
+                                HStack(spacing: 6) {
+                                    Image(systemName: "star.fill")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(Color(red: 1, green: 0.8, blue: 0.32))
+                                    Text(name)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .lineLimit(1)
+                                    Spacer(minLength: 2)
+                                    Button {
+                                        settings.vipNames.removeAll { $0 == name }
+                                    } label: {
+                                        Image(systemName: "xmark")
+                                            .font(.system(size: 8.5, weight: .bold))
+                                            .foregroundStyle(IsloStyle.muted)
+                                            .frame(width: 18, height: 18)
+                                            .background(Circle().fill(Color.white.opacity(0.08)))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(Text(text("\(name) kişisini kaldır", "Remove \(name)")))
+                                }
+                                .padding(.leading, 10)
+                                .padding(.trailing, 5)
+                                .frame(height: 28)
+                                .background(Capsule().fill(Color.white.opacity(0.07)))
+                                .overlay(Capsule().strokeBorder(IsloStyle.line, lineWidth: 1))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func addVIP() {
+        let name = vipDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        if !settings.vipNames.contains(where: { $0.localizedCaseInsensitiveCompare(name) == .orderedSame }) {
+            settings.vipNames.append(name)
+        }
+        vipDraft = ""
     }
 
     private func permission(for feature: Feature) -> FeaturePermission? {

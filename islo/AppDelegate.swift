@@ -31,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var checkForUpdatesMenuItem: NSMenuItem?
     private var missingPermissionMenuItems: [NSMenuItem] = []
     private var cancellables = Set<AnyCancellable>()
+    private var autoClearTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // The app lives in the menu bar and notch without occupying the Dock.
@@ -438,6 +439,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.notificationMonitor.setHidesSystemBanners(hides)
             }
             .store(in: &cancellables)
+
+        settings.$mutedNotificationApps
+            .receive(on: RunLoop.main)
+            .sink { [weak self] apps in self?.notificationMonitor.setMutedApps(apps) }
+            .store(in: &cancellables)
+
+        settings.$notificationAutoClear
+            .combineLatest(settings.$shelfAutoClear)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] notifications, shelf in
+                self?.autoClear(notifications: notifications, shelf: shelf)
+            }
+            .store(in: &cancellables)
+        // Things age while islo. runs; look once a minute.
+        autoClearTimer?.invalidate()
+        autoClearTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.autoClear(notifications: self.settings.notificationAutoClear, shelf: self.settings.shelfAutoClear)
+            }
+        }
+    }
+
+    private func autoClear(notifications: AutoClearInterval, shelf: AutoClearInterval) {
+        notificationMonitor.removeItems(olderThan: notifications.seconds)
+        fileShelfManager.removeItems(olderThan: shelf.seconds)
     }
 
     private func localized(_ turkish: String, _ english: String) -> String {
@@ -590,6 +617,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             PrivacyMonitor.shared.debugSimulate(PrivacyUsage(microphone: true, camera: true, appName: "Zoom"))
         case "privacy-off":
             PrivacyMonitor.shared.debugSimulate(nil)
+        case "notification":
+            notificationMonitor.debugInject()
+        case "rain":
+            WeatherManager.shared.debugRain()
+        case let command where command.hasPrefix("privacy:"):
+            // "privacy:<app name>": camera and microphone in use by that app.
+            let name = String(command.dropFirst("privacy:".count))
+            PrivacyMonitor.shared.debugSimulate(PrivacyUsage(microphone: true, camera: true, appName: name))
+        case let command where command.hasPrefix("privacy-mic:"):
+            let name = String(command.dropFirst("privacy-mic:".count))
+            PrivacyMonitor.shared.debugSimulate(PrivacyUsage(microphone: true, camera: false, appName: name))
         case "event":
             commandEchoManager.showUpcomingEvent(CalendarEventInfo(
                 id: "debug", title: "Tasarım toplantısı",

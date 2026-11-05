@@ -190,10 +190,10 @@ final class FloatingNotchWindowController: NSWindowController {
     private func reposition(animated: Bool) {
         guard let window, let screen = preferredScreen else { return }
 
-        let topGap: CGFloat = screen.safeAreaInsets.top > 0 ? 0 : 6
+        // Always hangs from the top edge, notch or not.
         let targetFrame = NSRect(
             x: screen.frame.midX - currentSize.width / 2,
-            y: screen.frame.maxY - topGap - currentSize.height,
+            y: screen.frame.maxY - currentSize.height,
             width: currentSize.width,
             height: currentSize.height
         )

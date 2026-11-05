@@ -246,6 +246,34 @@ enum NotificationPreviewStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// How long notifications and shelf items stay before islo. clears them.
+enum AutoClearInterval: String, CaseIterable, Identifiable {
+    case never
+    case hour
+    case day
+    case week
+
+    var id: String { rawValue }
+
+    var seconds: TimeInterval? {
+        switch self {
+        case .never: nil
+        case .hour: 3_600
+        case .day: 86_400
+        case .week: 604_800
+        }
+    }
+
+    func title(language: AppLanguage) -> String {
+        switch self {
+        case .never: language.value(turkish: "Kapalı", english: "Off")
+        case .hour: language.value(turkish: "1 saat", english: "1 hour")
+        case .day: language.value(turkish: "1 gün", english: "1 day")
+        case .week: language.value(turkish: "1 hafta", english: "1 week")
+        }
+    }
+}
+
 /// How strongly the theme colour tints the dark dashboard surface.
 enum SurfaceTone: String, CaseIterable, Identifiable {
     case black
@@ -297,6 +325,7 @@ final class AppSettings: ObservableObject {
         static let privacyIndicatorEnabled = "dashboard.privacy.enabled"
         static let lyricsEnabled = "dashboard.lyrics.enabled"
         static let weatherEnabled = "dashboard.weather.enabled"
+        static let rainAlertsEnabled = "dashboard.weather.rainAlerts"
         static let hotKeyEnabled = "interaction.hotKey.enabled"
         static let screenshotPreviewEnabled = "dashboard.screenshots.enabled"
         static let hideSystemScreenshotThumbnail = "dashboard.screenshots.hideSystemThumbnail"
@@ -312,6 +341,11 @@ final class AppSettings: ObservableObject {
         static let dashboardNotificationsEnabled = "dashboard.notifications.enabled"
         static let hideSystemNotificationBanners = "dashboard.notifications.hideSystemBanners"
         static let notificationPreviewStyle = "dashboard.notifications.preview"
+        static let notificationAutoClear = "dashboard.notifications.autoClear"
+        static let mutedNotificationApps = "dashboard.notifications.mutedApps"
+        static let vipNames = "dashboard.notifications.vip"
+        static let knownNotificationApps = "dashboard.notifications.knownApps"
+        static let shelfAutoClear = "dashboard.fileShelf.autoClear"
         static let homeWidgetStyle = "dashboard.homeWidgetStyle"
         static let legacySceneStyle = "appearance.notchSceneStyle"
         static let accentTheme = "appearance.accentTheme"
@@ -444,6 +478,11 @@ final class AppSettings: ObservableObject {
     @Published var isHotKeyTaken = false
 
     /// Current weather on Home, from Open-Meteo.
+    /// The notch says when rain starts within the hour.
+    @Published var rainAlertsEnabled: Bool {
+        didSet { defaults.set(rainAlertsEnabled, forKey: Key.rainAlertsEnabled) }
+    }
+
     @Published var weatherEnabled: Bool {
         didSet { defaults.set(weatherEnabled, forKey: Key.weatherEnabled) }
     }
@@ -488,6 +527,50 @@ final class AppSettings: ObservableObject {
 
     @Published var notificationPreviewStyle: NotificationPreviewStyle {
         didSet { defaults.set(notificationPreviewStyle.rawValue, forKey: Key.notificationPreviewStyle) }
+    }
+
+    /// Apps whose notifications stay with macOS instead of the notch.
+    @Published var mutedNotificationApps: [String] {
+        didSet { defaults.set(mutedNotificationApps, forKey: Key.mutedNotificationApps) }
+    }
+
+    /// People whose messages stand out in the notch and stay longer.
+    @Published var vipNames: [String] {
+        didSet { defaults.set(vipNames, forKey: Key.vipNames) }
+    }
+
+    /// Apps that have sent a notification, newest first, for Settings.
+    @Published private(set) var knownNotificationApps: [String]
+
+    func noteNotificationApp(_ name: String) {
+        guard !knownNotificationApps.contains(name) else { return }
+        knownNotificationApps = Array(([name] + knownNotificationApps).prefix(40))
+        defaults.set(knownNotificationApps, forKey: Key.knownNotificationApps)
+    }
+
+    /// A message from someone on the VIP list: their name in the title (the
+    /// sender for message apps) or subtitle, as whole words.
+    func isVIP(_ item: CapturedNotification) -> Bool {
+        let names = vipNames.map(Self.searchable).filter { !$0.isEmpty }
+        guard !names.isEmpty else { return false }
+        let fields = [item.title, item.subtitle].map { " " + Self.searchable($0) + " " }
+        return names.contains { name in fields.contains { $0.contains(" " + name + " ") } }
+    }
+
+    private static func searchable(_ text: String) -> String {
+        let folded = text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "tr_TR"))
+        let spaced = folded.unicodeScalars.map { CharacterSet.alphanumerics.contains($0) ? String($0) : " " }.joined()
+        return spaced.split(separator: " ").joined(separator: " ")
+    }
+
+    /// Notifications older than this leave the notch's list.
+    @Published var notificationAutoClear: AutoClearInterval {
+        didSet { defaults.set(notificationAutoClear.rawValue, forKey: Key.notificationAutoClear) }
+    }
+
+    /// Files leave the shelf this long after they were added.
+    @Published var shelfAutoClear: AutoClearInterval {
+        didSet { defaults.set(shelfAutoClear.rawValue, forKey: Key.shelfAutoClear) }
     }
 
     /// Keep macOS's own banner off screen while the notch shows the
@@ -597,6 +680,7 @@ final class AppSettings: ObservableObject {
         privacyIndicatorEnabled = Self.bool(forKey: Key.privacyIndicatorEnabled, defaults: defaults, fallback: true)
         lyricsEnabled = Self.bool(forKey: Key.lyricsEnabled, defaults: defaults, fallback: true)
         weatherEnabled = Self.bool(forKey: Key.weatherEnabled, defaults: defaults, fallback: true)
+        rainAlertsEnabled = Self.bool(forKey: Key.rainAlertsEnabled, defaults: defaults, fallback: true)
         hotKeyEnabled = Self.bool(forKey: Key.hotKeyEnabled, defaults: defaults, fallback: true)
         screenshotPreviewEnabled = Self.bool(forKey: Key.screenshotPreviewEnabled, defaults: defaults, fallback: true)
         hideSystemScreenshotThumbnail = Self.bool(forKey: Key.hideSystemScreenshotThumbnail, defaults: defaults, fallback: true)
@@ -627,6 +711,15 @@ final class AppSettings: ObservableObject {
         notificationPreviewStyle = NotificationPreviewStyle(
             rawValue: defaults.string(forKey: Key.notificationPreviewStyle) ?? ""
         ) ?? .content
+        mutedNotificationApps = defaults.stringArray(forKey: Key.mutedNotificationApps) ?? []
+        vipNames = defaults.stringArray(forKey: Key.vipNames) ?? []
+        knownNotificationApps = defaults.stringArray(forKey: Key.knownNotificationApps) ?? []
+        notificationAutoClear = AutoClearInterval(
+            rawValue: defaults.string(forKey: Key.notificationAutoClear) ?? ""
+        ) ?? .never
+        shelfAutoClear = AutoClearInterval(
+            rawValue: defaults.string(forKey: Key.shelfAutoClear) ?? ""
+        ) ?? .never
         hideSystemNotificationBanners = Self.bool(
             forKey: Key.hideSystemNotificationBanners,
             defaults: defaults,
@@ -694,6 +787,11 @@ final class AppSettings: ObservableObject {
         dashboardFileShelfEnabled = true
         dashboardNotificationsEnabled = true
         notificationPreviewStyle = .content
+        notificationAutoClear = .never
+        shelfAutoClear = .never
+        mutedNotificationApps = []
+        vipNames = []
+        rainAlertsEnabled = true
         hideSystemNotificationBanners = true
     }
 

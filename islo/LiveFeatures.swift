@@ -1134,6 +1134,31 @@ struct WeatherSnapshot: Equatable {
     let high: Double
     let low: Double
     let locationName: String
+    /// This hour and the next few.
+    var hourly: [HourlyForecast] = []
+    /// Rain starting within the hour, when it isn't raining yet.
+    var rain: RainOutlook?
+}
+
+struct HourlyForecast: Equatable, Identifiable {
+    let date: Date
+    let temperature: Double
+    let code: Int
+    let isDay: Bool
+    /// Chance of rain or snow that hour, 0–100.
+    let precipitationChance: Int
+
+    var id: Date { date }
+}
+
+/// Rain that starts soon, from Open-Meteo's quarter-hour forecast.
+struct RainOutlook: Equatable {
+    /// When the rain is expected to begin.
+    let start: Date
+    /// Chance of rain that hour, 0–100, when known.
+    let chance: Int?
+    /// Rain (mm) in each quarter-hour of the next two hours.
+    let slots: [Double]
 }
 
 /// Current weather from Open-Meteo (free, no account). The place is the
@@ -1144,6 +1169,10 @@ final class WeatherManager: ObservableObject {
     static let shared = WeatherManager()
 
     @Published private(set) var snapshot: WeatherSnapshot?
+    /// Bumps when rain is about to start; `rainAlert` says when.
+    @Published private(set) var rainAlertRevision = 0
+    private(set) var rainAlert: RainOutlook?
+    private var lastAlertedRain: Date?
 
     private var isEnabled = false
     private var chosenLocation: WeatherLocation?
@@ -1164,7 +1193,7 @@ final class WeatherManager: ObservableObject {
         if enabled != isEnabled {
             isEnabled = enabled
             if enabled {
-                timer = Timer.scheduledTimer(withTimeInterval: 30 * 60, repeats: true) { _ in
+                timer = Timer.scheduledTimer(withTimeInterval: 15 * 60, repeats: true) { _ in
                     Task { @MainActor in WeatherManager.shared.refresh() }
                 }
                 wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -1203,8 +1232,32 @@ final class WeatherManager: ObservableObject {
                   let snapshot = await Self.forecast(for: location, fahrenheit: fahrenheit),
                   !Task.isCancelled else { return }
             self.snapshot = snapshot
+            self.considerRainAlert(snapshot.rain)
         }
     }
+
+    /// Says so once per shower, when it's 3–60 minutes away.
+    private func considerRainAlert(_ outlook: RainOutlook?) {
+        guard let outlook else { return }
+        let minutes = outlook.start.timeIntervalSinceNow / 60
+        guard minutes >= 3, minutes <= 60 else { return }
+        if let last = lastAlertedRain, abs(last.timeIntervalSince(outlook.start)) < 90 * 60 { return }
+        lastAlertedRain = outlook.start
+        rainAlert = outlook
+        rainAlertRevision &+= 1
+    }
+
+    #if DEBUG
+    /// Debug builds: rain in 20 minutes.
+    func debugRain() {
+        rainAlert = RainOutlook(
+            start: Date().addingTimeInterval(20 * 60),
+            chance: 80,
+            slots: [0, 0, 0.3, 0.9, 1.4, 1.1, 0.6, 0.2]
+        )
+        rainAlertRevision &+= 1
+    }
+    #endif
 
     /// "Europe/Istanbul" → Istanbul, looked up by name.
     nonisolated static func timeZoneLocation() async -> WeatherLocation? {
@@ -1243,8 +1296,13 @@ final class WeatherManager: ObservableObject {
         var items = [
             URLQueryItem(name: "latitude", value: String(location.latitude)),
             URLQueryItem(name: "longitude", value: String(location.longitude)),
-            URLQueryItem(name: "current", value: "temperature_2m,weather_code,is_day"),
+            URLQueryItem(name: "current", value: "temperature_2m,weather_code,is_day,precipitation"),
             URLQueryItem(name: "daily", value: "temperature_2m_max,temperature_2m_min"),
+            URLQueryItem(name: "hourly", value: "temperature_2m,weather_code,is_day,precipitation_probability"),
+            URLQueryItem(name: "minutely_15", value: "precipitation"),
+            URLQueryItem(name: "forecast_hours", value: "8"),
+            URLQueryItem(name: "forecast_minutely_15", value: "8"),
+            URLQueryItem(name: "timeformat", value: "unixtime"),
             URLQueryItem(name: "timezone", value: "auto"),
             URLQueryItem(name: "forecast_days", value: "1")
         ]
@@ -1259,15 +1317,73 @@ final class WeatherManager: ObservableObject {
               let code = (current["weather_code"] as? NSNumber)?.intValue else { return nil }
         let high = ((daily["temperature_2m_max"] as? [NSNumber])?.first?.doubleValue) ?? temperature
         let low = ((daily["temperature_2m_min"] as? [NSNumber])?.first?.doubleValue) ?? temperature
+        let now = Date()
+
+        // Arrays can hold nulls; read them by index.
+        func numbers(_ block: [String: Any]?, _ key: String) -> [Double?] {
+            (block?[key] as? [Any])?.map { ($0 as? NSNumber)?.doubleValue } ?? []
+        }
+        let hourlyBlock = root["hourly"] as? [String: Any]
+        let hourTimes = numbers(hourlyBlock, "time")
+        let hourTemps = numbers(hourlyBlock, "temperature_2m")
+        let hourCodes = numbers(hourlyBlock, "weather_code")
+        let hourDay = numbers(hourlyBlock, "is_day")
+        let hourChance = numbers(hourlyBlock, "precipitation_probability")
+        var hourly: [HourlyForecast] = []
+        for index in hourTimes.indices {
+            guard let time = hourTimes[index], let temperature = hourTemps[safe: index] ?? nil,
+                  let code = hourCodes[safe: index] ?? nil else { continue }
+            let date = Date(timeIntervalSince1970: time)
+            // From the current hour on.
+            guard date > now.addingTimeInterval(-3_600) else { continue }
+            hourly.append(HourlyForecast(
+                date: date,
+                temperature: temperature,
+                code: Int(code),
+                isDay: (hourDay[safe: index] ?? nil).map { $0 != 0 } ?? true,
+                precipitationChance: Int(((hourChance[safe: index] ?? nil) ?? 0).rounded())
+            ))
+        }
+        hourly = Array(hourly.prefix(6))
+
+        // Each quarter-hour holds the rain of the 15 minutes before it.
+        let quarterBlock = root["minutely_15"] as? [String: Any]
+        let quarterTimes = numbers(quarterBlock, "time").compactMap { $0 }.map { Date(timeIntervalSince1970: $0) }
+        let quarterRain = numbers(quarterBlock, "precipitation").map { $0 ?? 0 }
+        let rainingNow = ((current["precipitation"] as? NSNumber)?.doubleValue ?? 0) >= 0.1
+            || Self.rainCodes.contains(code)
+        var rain: RainOutlook?
+        if !rainingNow {
+            var start: Date?
+            if let index = quarterTimes.indices.first(where: {
+                quarterTimes[$0] > now && (quarterRain[safe: $0] ?? 0) >= 0.1
+            }) {
+                start = max(quarterTimes[index].addingTimeInterval(-15 * 60), now)
+            } else if let hour = hourly.first(where: {
+                $0.date > now && $0.precipitationChance >= 60 && Self.rainCodes.contains($0.code)
+            }) {
+                start = max(hour.date.addingTimeInterval(-45 * 60), now)
+            }
+            if let start, start.timeIntervalSince(now) <= 75 * 60 {
+                let chance = hourly.last(where: { $0.date <= start.addingTimeInterval(3_600) })?.precipitationChance
+                rain = RainOutlook(start: start, chance: chance, slots: Array(quarterRain.prefix(8)))
+            }
+        }
+
         return WeatherSnapshot(
             temperature: temperature,
             code: code,
             isDay: (current["is_day"] as? NSNumber)?.intValue != 0,
             high: high,
             low: low,
-            locationName: location.name
+            locationName: location.name,
+            hourly: hourly,
+            rain: rain
         )
     }
+
+    /// WMO codes for drizzle, rain, showers and thunderstorms.
+    static let rainCodes: Set<Int> = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99]
 
     /// SF Symbol for a WMO weather code.
     static func symbolName(code: Int, isDay: Bool) -> String {
@@ -1910,5 +2026,12 @@ private extension String {
         var buffer = [UInt8](repeating: 0, count: length)
         getxattr(url.path, "com.apple.quarantine", &buffer, length, 0, 0)
         self = String(decoding: buffer, as: UTF8.self)
+    }
+}
+
+extension Array {
+    /// The element at `index`, or nil past the end.
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
