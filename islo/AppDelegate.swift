@@ -446,10 +446,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .store(in: &cancellables)
 
         settings.$notificationAutoClear
-            .combineLatest(settings.$shelfAutoClear)
+            .combineLatest(settings.$shelfAutoClear, settings.$clipboardAutoClear)
             .receive(on: RunLoop.main)
-            .sink { [weak self] notifications, shelf in
-                self?.autoClear(notifications: notifications, shelf: shelf)
+            .sink { [weak self] notifications, shelf, clipboard in
+                self?.autoClear(notifications: notifications, shelf: shelf, clipboard: clipboard)
             }
             .store(in: &cancellables)
         // Things age while islo. runs; look once a minute.
@@ -457,14 +457,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         autoClearTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                self.autoClear(notifications: self.settings.notificationAutoClear, shelf: self.settings.shelfAutoClear)
+                self.autoClear(
+                    notifications: self.settings.notificationAutoClear,
+                    shelf: self.settings.shelfAutoClear,
+                    clipboard: self.settings.clipboardAutoClear
+                )
             }
         }
     }
 
-    private func autoClear(notifications: AutoClearInterval, shelf: AutoClearInterval) {
+    private func autoClear(notifications: AutoClearInterval, shelf: AutoClearInterval, clipboard: AutoClearInterval) {
         notificationMonitor.removeItems(olderThan: notifications.seconds)
         fileShelfManager.removeItems(olderThan: shelf.seconds)
+        clipboardHistoryManager.removeEntries(olderThan: clipboard.seconds)
     }
 
     private func localized(_ turkish: String, _ english: String) -> String {
@@ -619,6 +624,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             PrivacyMonitor.shared.debugSimulate(nil)
         case "notification":
             notificationMonitor.debugInject()
+        case "notification-old":
+            notificationMonitor.debugInject(age: 7_200)
+        case "clip":
+            clipboardHistoryManager.debugInject("Yeni kopyalanan metin", age: 0)
+        case "clip-old":
+            clipboardHistoryManager.debugInject("2 saat önce kopyalanan metin", age: 7_200)
         case "rain":
             WeatherManager.shared.debugRain()
         case let command where command.hasPrefix("privacy:"):

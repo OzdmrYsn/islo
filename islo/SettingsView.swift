@@ -735,10 +735,6 @@ struct SettingsView: View {
                 stackedRow(symbol: "text.bubble.fill", colors: Tint.red, title: text("Önizleme", "Preview"), subtitle: text("Çentik genişlediğinde bildirimin içeriği mi, yalnızca yeni bildirim geldiği mi görünsün?", "When the notch widens, show the notification's content or only that one arrived?")) {
                     ChipPicker(selection: $settings.notificationPreviewStyle, options: NotificationPreviewStyle.allCases.map { ($0, $0.title(language: settings.language)) }, accent: accent, fillsWidth: true)
                 }
-                divider
-                stackedRow(symbol: "clock.arrow.circlepath", colors: Tint.red, title: text("Otomatik temizle", "Clear automatically"), subtitle: text("Bu süreden eski bildirimler çentikteki listeden kalkar. Bildirim Merkezi'ndekiler olduğu gibi kalır.", "Notifications older than this leave the notch's list. Notification Center keeps its own.")) {
-                    ChipPicker(selection: $settings.notificationAutoClear, options: AutoClearInterval.allCases.map { ($0, $0.title(language: settings.language)) }, accent: accent, fillsWidth: true)
-                }
             }
             notificationAppsSection
             vipSection
@@ -777,12 +773,6 @@ struct SettingsView: View {
             }
             section(text("Şehir", "City")) {
                 weatherCityPicker
-            }
-        case .shelf:
-            section(text("Seçenekler", "Options")) {
-                stackedRow(symbol: "clock.arrow.circlepath", colors: Tint.blue, title: text("Otomatik temizle", "Clear automatically"), subtitle: text("Rafa eklediğin dosyalar bu süre dolunca raftan kalkar. Dosyaların kendisi silinmez, yerinde kalır.", "Files leave the shelf this long after you add them. The files themselves aren't deleted.")) {
-                    ChipPicker(selection: $settings.shelfAutoClear, options: AutoClearInterval.allCases.map { ($0, $0.title(language: settings.language)) }, accent: accent, fillsWidth: true)
-                }
             }
         case .screenshots:
             section(text("Seçenekler", "Options")) {

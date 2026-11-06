@@ -708,6 +708,21 @@ final class ClipboardHistoryManager: ObservableObject {
 
     func clear() { entries.removeAll() }
 
+    #if DEBUG
+    /// Debug builds: a history entry copied `age` seconds ago.
+    func debugInject(_ text: String, age: TimeInterval) {
+        entries.insert(ClipboardEntry(text: text, source: "islo. test", capturedAt: Date().addingTimeInterval(-age)), at: 0)
+    }
+    #endif
+
+    /// Drops entries copied more than `interval` ago.
+    func removeEntries(olderThan interval: TimeInterval?) {
+        guard let interval, !entries.isEmpty else { return }
+        let cutoff = Date().addingTimeInterval(-interval)
+        guard entries.contains(where: { $0.capturedAt < cutoff }) else { return }
+        entries.removeAll { $0.capturedAt < cutoff }
+    }
+
     private func captureIfNeeded() {
         let pasteboard = NSPasteboard.general
         guard pasteboard.changeCount != lastChangeCount else { return }
@@ -1542,16 +1557,17 @@ final class NotificationMonitor: ObservableObject {
     }
 
     #if DEBUG
-    /// Debug builds: a notification with Reply and Mark as Read.
-    func debugInject() {
+    /// Debug builds: a notification with Reply and Mark as Read, arrived
+    /// `age` seconds ago.
+    func debugInject(age: TimeInterval = 0) {
         let item = CapturedNotification(
             id: "debug-\(UUID().uuidString)",
             appName: "WhatsApp",
             bundleIdentifier: nil,
-            title: "Ahmet",
+            title: age > 0 ? "Eski mesaj" : "Ahmet",
             subtitle: "",
-            body: "Akşam geliyor musun?",
-            date: .now,
+            body: age > 0 ? "2 saat önce geldi" : "Akşam geliyor musun?",
+            date: Date().addingTimeInterval(-age),
             actions: [
                 NotificationAction(name: "debug-reply", title: "Yanıtla"),
                 NotificationAction(name: "debug-read", title: "Okundu olarak işaretle")
@@ -1897,6 +1913,10 @@ final class FileShelfManager: ObservableObject {
     /// When each file went on the shelf, by path, for clearing it later.
     private let addedKey = "dashboard.fileShelf.addedAt"
     private var addedAt: [String: Date] = [:]
+    /// Shelved files out of reach at launch (an unplugged drive, a folder
+    /// macOS hasn't opened up yet). They stay saved, just not shown, so a
+    /// moment without access never takes them off the shelf for good.
+    private var unreachable: [String] = []
     private var dragMonitors: [Any] = []
     private var dragPasteboardChangeCount = NSPasteboard(name: .drag).changeCount
     private var dragEndTimer: Timer?
@@ -1964,13 +1984,16 @@ final class FileShelfManager: ObservableObject {
         items = paths.map(URL.init(fileURLWithPath:)).filter {
             FileManager.default.fileExists(atPath: $0.path)
         }
+        let shown = Set(items.map(\.path))
+        unreachable = paths.filter { !shown.contains(URL(fileURLWithPath: $0).path) }
         let stored = UserDefaults.standard.dictionary(forKey: addedKey) as? [String: Double] ?? [:]
         // Files shelved before islo. kept dates count from now.
-        for url in items {
-            addedAt[url.path] = stored[url.path].map(Date.init(timeIntervalSince1970:)) ?? Date()
+        for path in items.map(\.path) + unreachable {
+            addedAt[path] = stored[path].map(Date.init(timeIntervalSince1970:)) ?? Date()
         }
         items.forEach(makeThumbnail)
-        persist()
+        // Only the dates are written here; the list stays exactly as it was.
+        UserDefaults.standard.set(addedAt.mapValues(\.timeIntervalSince1970), forKey: addedKey)
     }
 
     func receive(_ providers: [NSItemProvider]) -> Bool {
@@ -1992,6 +2015,7 @@ final class FileShelfManager: ObservableObject {
     func add(_ url: URL) {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         items.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
+        unreachable.removeAll { URL(fileURLWithPath: $0).standardizedFileURL == url.standardizedFileURL }
         items.insert(url, at: 0)
         items = Array(items.prefix(60))
         addedAt[url.path] = Date()
@@ -2001,6 +2025,7 @@ final class FileShelfManager: ObservableObject {
 
     func remove(_ url: URL) {
         items.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
+        unreachable.removeAll { URL(fileURLWithPath: $0).standardizedFileURL == url.standardizedFileURL }
         thumbnails[url] = nil
         persist()
     }
@@ -2008,6 +2033,7 @@ final class FileShelfManager: ObservableObject {
     /// Empties the shelf. The files themselves stay where they are.
     func clear() {
         items.removeAll()
+        unreachable.removeAll()
         thumbnails.removeAll()
         persist()
     }
@@ -2015,11 +2041,13 @@ final class FileShelfManager: ObservableObject {
     /// Takes files off the shelf `interval` after they were added; the files
     /// themselves stay where they are.
     func removeItems(olderThan interval: TimeInterval?) {
-        guard let interval, !items.isEmpty else { return }
+        guard let interval, !(items.isEmpty && unreachable.isEmpty) else { return }
         let cutoff = Date().addingTimeInterval(-interval)
         let expired = items.filter { (addedAt[$0.path] ?? Date()) < cutoff }
-        guard !expired.isEmpty else { return }
+        let expiredUnreachable = unreachable.filter { (addedAt[$0] ?? Date()) < cutoff }
+        guard !expired.isEmpty || !expiredUnreachable.isEmpty else { return }
         items.removeAll { expired.contains($0) }
+        unreachable.removeAll { expiredUnreachable.contains($0) }
         expired.forEach { thumbnails[$0] = nil }
         persist()
     }
@@ -2097,7 +2125,9 @@ final class FileShelfManager: ObservableObject {
     }
 
     private func persist() {
-        let paths = items.map(\.path)
+        let paths = items.map(\.path) + unreachable.filter { path in
+            !items.contains { $0.path == path }
+        }
         addedAt = addedAt.filter { paths.contains($0.key) }
         UserDefaults.standard.set(addedAt.mapValues(\.timeIntervalSince1970), forKey: addedKey)
         UserDefaults.standard.set(paths, forKey: defaultsKey)

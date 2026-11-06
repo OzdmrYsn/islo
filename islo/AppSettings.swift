@@ -346,6 +346,7 @@ final class AppSettings: ObservableObject {
         static let vipNames = "dashboard.notifications.vip"
         static let knownNotificationApps = "dashboard.notifications.knownApps"
         static let shelfAutoClear = "dashboard.fileShelf.autoClear"
+        static let clipboardAutoClear = "dashboard.clipboard.autoClear"
         static let homeWidgetStyle = "dashboard.homeWidgetStyle"
         static let legacySceneStyle = "appearance.notchSceneStyle"
         static let accentTheme = "appearance.accentTheme"
@@ -573,6 +574,11 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(shelfAutoClear.rawValue, forKey: Key.shelfAutoClear) }
     }
 
+    /// Copied text leaves the clipboard history after this long.
+    @Published var clipboardAutoClear: AutoClearInterval {
+        didSet { defaults.set(clipboardAutoClear.rawValue, forKey: Key.clipboardAutoClear) }
+    }
+
     /// Keep macOS's own banner off screen while the notch shows the
     /// notification; it still goes to Notification Center.
     @Published var hideSystemNotificationBanners: Bool {
@@ -720,6 +726,9 @@ final class AppSettings: ObservableObject {
         shelfAutoClear = AutoClearInterval(
             rawValue: defaults.string(forKey: Key.shelfAutoClear) ?? ""
         ) ?? .never
+        clipboardAutoClear = AutoClearInterval(
+            rawValue: defaults.string(forKey: Key.clipboardAutoClear) ?? ""
+        ) ?? .never
         hideSystemNotificationBanners = Self.bool(
             forKey: Key.hideSystemNotificationBanners,
             defaults: defaults,
@@ -789,6 +798,7 @@ final class AppSettings: ObservableObject {
         notificationPreviewStyle = .content
         notificationAutoClear = .never
         shelfAutoClear = .never
+        clipboardAutoClear = .never
         mutedNotificationApps = []
         vipNames = []
         rainAlertsEnabled = true

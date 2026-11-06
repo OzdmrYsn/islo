@@ -198,6 +198,8 @@ struct DynamicNotchView: View {
     @State private var isEchoHovered = false
     @State private var replyPhase: ReplyPhase = .none
     @State private var showsHourlyWeather = false
+    /// The tab whose filter row shows the auto-clear choices.
+    @State private var autoClearPicker: DashboardSection?
     @State private var replyText = ""
     @FocusState private var isReplyFieldFocused: Bool
     @State private var echoActionDone: String?
@@ -911,6 +913,72 @@ struct DynamicNotchView: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+
+    /// A small clock in a tab's filter row: just the icon when off, the
+    /// time when on. It turns the row into the choices.
+    private func autoClearButton(_ section: DashboardSection, _ interval: AutoClearInterval) -> some View {
+        let isOn = interval != .never
+        let help = isOn
+            ? localized("Otomatik temizleme: \(interval.title(language: settings.language))", "Clears after \(interval.title(language: settings.language))")
+            : localized("Otomatik temizleme kapalı", "Automatic clearing is off")
+        return Button {
+            withAnimation(.easeOut(duration: 0.18)) { autoClearPicker = section }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 9.5, weight: .bold))
+                if isOn {
+                    Text(autoClearShortTitle(interval))
+                        .font(.system(size: 10, weight: .semibold))
+                        .lineLimit(1)
+                }
+            }
+            .foregroundStyle(isOn ? accent : primaryColor.opacity(0.75))
+            .padding(.horizontal, isOn ? 9 : 0)
+            .frame(minWidth: 24, minHeight: 24)
+            .background(Capsule().fill(isOn ? accent.opacity(0.14) : primaryColor.opacity(0.1)))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(Text(help))
+    }
+
+    /// Takes the filter row's place while choosing; picking closes it.
+    private func autoClearChooser(_ selection: Binding<AutoClearInterval>) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(accent)
+            Text(localized("Otomatik temizle", "Clear after"))
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(primaryColor.opacity(0.6))
+                .lineLimit(1)
+                .padding(.trailing, 2)
+            ForEach(AutoClearInterval.allCases) { interval in
+                filterChip(interval.title(language: settings.language), isSelected: selection.wrappedValue == interval) {
+                    selection.wrappedValue = interval
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        withAnimation(.easeOut(duration: 0.18)) { autoClearPicker = nil }
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+            roundIconButton("checkmark", label: localized("Tamam", "Done"), size: 24) {
+                withAnimation(.easeOut(duration: 0.18)) { autoClearPicker = nil }
+            }
+        }
+        .transition(.opacity)
+    }
+
+    private func autoClearShortTitle(_ interval: AutoClearInterval) -> String {
+        switch interval {
+        case .never: ""
+        case .hour: localized("1 sa", "1h")
+        case .day: localized("1 gün", "1d")
+        case .week: localized("1 hf", "1w")
+        }
     }
 
     private func roundIconButton(
@@ -1916,10 +1984,16 @@ struct DynamicNotchView: View {
 
             dashboardCard(padding: 12) {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 6) {
-                        filterChip(localized("Tümü · \(items.count)", "All · \(items.count)"), isSelected: shelfFilter == .all) { shelfFilter = .all }
-                        filterChip(localized("Görseller · \(imageCount)", "Images · \(imageCount)"), isSelected: shelfFilter == .images) { shelfFilter = .images }
-                        filterChip(localized("Belgeler · \(items.count - imageCount)", "Documents · \(items.count - imageCount)"), isSelected: shelfFilter == .documents) { shelfFilter = .documents }
+                    if autoClearPicker == .shelf {
+                        autoClearChooser($settings.shelfAutoClear)
+                    } else {
+                        HStack(spacing: 6) {
+                            filterChip(localized("Tümü · \(items.count)", "All · \(items.count)"), isSelected: shelfFilter == .all) { shelfFilter = .all }
+                            filterChip(localized("Görseller · \(imageCount)", "Images · \(imageCount)"), isSelected: shelfFilter == .images) { shelfFilter = .images }
+                            filterChip(localized("Belgeler · \(items.count - imageCount)", "Documents · \(items.count - imageCount)"), isSelected: shelfFilter == .documents) { shelfFilter = .documents }
+                            Spacer(minLength: 0)
+                            autoClearButton(.shelf, settings.shelfAutoClear)
+                        }
                     }
 
                     if filtered.isEmpty {
@@ -2037,16 +2111,21 @@ struct DynamicNotchView: View {
 
             dashboardCard(padding: 12) {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 6) {
-                        filterChip(localized("Tümü · \(entries.count)", "All · \(entries.count)"), isSelected: clipboardFilter == .all) { clipboardFilter = .all }
-                        filterChip(localized("Metin · \(entries.count - linkCount)", "Text · \(entries.count - linkCount)"), isSelected: clipboardFilter == .text) { clipboardFilter = .text }
-                        filterChip(localized("Bağlantı · \(linkCount)", "Links · \(linkCount)"), isSelected: clipboardFilter == .links) { clipboardFilter = .links }
-                        Spacer(minLength: 0)
-                        roundIconButton("trash", label: localized("Geçmişi temizle", "Clear history"), size: 24) {
-                            withAnimation(.easeInOut(duration: 0.2)) { clipboardHistoryManager.clear() }
+                    if autoClearPicker == .clipboard {
+                        autoClearChooser($settings.clipboardAutoClear)
+                    } else {
+                        HStack(spacing: 6) {
+                            filterChip(localized("Tümü · \(entries.count)", "All · \(entries.count)"), isSelected: clipboardFilter == .all) { clipboardFilter = .all }
+                            filterChip(localized("Metin · \(entries.count - linkCount)", "Text · \(entries.count - linkCount)"), isSelected: clipboardFilter == .text) { clipboardFilter = .text }
+                            filterChip(localized("Bağlantı · \(linkCount)", "Links · \(linkCount)"), isSelected: clipboardFilter == .links) { clipboardFilter = .links }
+                            Spacer(minLength: 0)
+                            autoClearButton(.clipboard, settings.clipboardAutoClear)
+                            roundIconButton("trash", label: localized("Geçmişi temizle", "Clear history"), size: 24) {
+                                withAnimation(.easeInOut(duration: 0.2)) { clipboardHistoryManager.clear() }
+                            }
+                            .disabled(entries.isEmpty)
+                            .opacity(entries.isEmpty ? 0.35 : 1)
                         }
-                        .disabled(entries.isEmpty)
-                        .opacity(entries.isEmpty ? 0.35 : 1)
                     }
 
                     if filtered.isEmpty {
@@ -2184,10 +2263,16 @@ struct DynamicNotchView: View {
 
             dashboardCard(padding: 12) {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 6) {
-                        filterChip(localized("Tümü", "All"), isSelected: notificationFilter == nil) { notificationFilter = nil }
-                        ForEach(appNames, id: \.self) { name in
-                            filterChip(name, isSelected: notificationFilter == name) { notificationFilter = name }
+                    if autoClearPicker == .notifications {
+                        autoClearChooser($settings.notificationAutoClear)
+                    } else {
+                        HStack(spacing: 6) {
+                            filterChip(localized("Tümü", "All"), isSelected: notificationFilter == nil) { notificationFilter = nil }
+                            ForEach(appNames, id: \.self) { name in
+                                filterChip(name, isSelected: notificationFilter == name) { notificationFilter = name }
+                            }
+                            Spacer(minLength: 0)
+                            autoClearButton(.notifications, settings.notificationAutoClear)
                         }
                     }
 
@@ -4319,6 +4404,7 @@ struct DynamicNotchView: View {
         guard newValue != presentation else { return }
 
         if newValue == .idle {
+            autoClearPicker = nil
             trackChangeTask?.cancel()
             isTemporaryTrackPreview = false
             showsOutputPicker = false
