@@ -624,8 +624,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             PrivacyMonitor.shared.debugSimulate(nil)
         case "notification":
             notificationMonitor.debugInject()
-        case "reply-probe":
-            notificationMonitor.debugProbeReply()
         case "notification-old":
             notificationMonitor.debugInject(age: 7_200)
         case "clip":

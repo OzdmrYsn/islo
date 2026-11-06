@@ -791,23 +791,7 @@ final class SystemBannerHider {
         return body()
     }
 
-    private var holding = false
-    private var showing = false
     private var muted: Set<String> = []
-
-    /// A reply is being typed from the notch into this banner's reply box;
-    /// it stays off screen however long that takes.
-    var holdsHidden: Bool {
-        get { locked { holding } }
-        set { locked { holding = newValue } }
-    }
-
-    /// macOS's own banner is wanted on screen (its reply box) until macOS
-    /// closes it.
-    var keepsVisible: Bool {
-        get { locked { showing } }
-        set { locked { showing = newValue } }
-    }
 
     /// Apps whose notifications the notch leaves to macOS.
     var mutedApps: Set<String> {
@@ -839,14 +823,7 @@ final class SystemBannerHider {
         // would show it, so leave it until macOS closes the window.
         if keys.isEmpty && unreadable == 0 { return }
 
-        if keepsVisible {
-            restore()
-            return
-        }
-        // A reply typed in the notch can take a while; that banner isn't
-        // waiting for an answer from macOS's side.
-        let isWaiting = !holdsHidden
-            && firstSeen.values.contains { now.timeIntervalSince($0) > Self.waitingAfter }
+        let isWaiting = firstSeen.values.contains { now.timeIntervalSince($0) > Self.waitingAfter }
         // Apps the notch leaves to macOS keep macOS's banner.
         let hasMuted = !mutedApps.isDisjoint(with: appNames)
         // Banners islo. couldn't read stay visible, as do alerts that wait
@@ -865,7 +842,6 @@ final class SystemBannerHider {
     func windowsClosed() {
         firstSeen.removeAll()
         moved = nil
-        keepsVisible = false
     }
 
     func restore() {
@@ -897,17 +873,9 @@ final class SystemBannerHider {
     }
 }
 
-/// The reply box of a macOS banner the notch is typing into. Used on the
-/// notification scan queue only.
-final class BannerReplySession {
-    var window: AXUIElement?
-    var field: AXUIElement?
-    var processIdentifier: pid_t = 0
-}
-
 extension String {
-    /// Without the invisible direction marks some apps put in names and
-    /// button titles (WhatsApp sends "\u{200E}Cevapla").
+    /// Without the invisible direction marks some apps put in their names
+    /// (WhatsApp's is "\u{200E}WhatsApp").
     var withoutDirectionMarks: String {
         let marks: Set<Unicode.Scalar> = [
             "\u{200E}", "\u{200F}", "\u{061C}",
@@ -919,21 +887,6 @@ extension String {
     }
 }
 
-/// A button macOS shows on a notification ("Reply", "Mark as Read"…).
-struct NotificationAction: Equatable, Hashable {
-    /// The Accessibility action that presses it.
-    let name: String
-    /// Its title, in the system's language.
-    let title: String
-
-    /// Message apps' Reply; the notch types the answer itself.
-    var isReply: Bool {
-        Self.replyTitles.contains(title.lowercased())
-    }
-
-    static let replyTitles: Set<String> = ["yanıtla", "yanitla", "cevapla", "yanıt ver", "reply", "respond"]
-}
-
 /// A notification macOS showed as a banner, read through Accessibility.
 struct CapturedNotification: Identifiable, Equatable {
     let id: String
@@ -943,12 +896,6 @@ struct CapturedNotification: Identifiable, Equatable {
     let subtitle: String
     let body: String
     let date: Date
-    /// The banner's own buttons, reachable while macOS shows it.
-    var actions: [NotificationAction] = []
-
-    var replyAction: NotificationAction? { actions.first(where: \.isReply) }
-    /// Other buttons, "Reply" aside.
-    var otherActions: [NotificationAction] { actions.filter { !$0.isReply } }
 
     /// The line to lead with: the title, or the body when there's no title.
     var headline: String { title.isEmpty ? body : title }
@@ -986,10 +933,7 @@ final class NotificationMonitor: ObservableObject {
     private var observer: AXObserver?
     private var observedProcess: pid_t = 0
     private let hider = SystemBannerHider()
-    /// The reply box being typed into from the notch (scan queue only).
-    private let replySession = BannerReplySession()
     private var mutedApps: Set<String> = []
-    private var loggedActionApps: Set<String> = []
     private var hidesSystemBanners = false
     private var isNotchReady = true
     private var isNotchVisible = true
@@ -1169,11 +1113,6 @@ final class NotificationMonitor: ObservableObject {
         }
         let wanted = fresh.filter { !mutedApps.contains($0.appName) }
         guard !wanted.isEmpty else { return }
-        for banner in wanted where !banner.actions.isEmpty && !loggedActionApps.contains(banner.appName) {
-            loggedActionApps.insert(banner.appName)
-            let titles = banner.actions.map(\.title).joined(separator: ", ")
-            notificationLog.notice("Buttons on \(banner.appName, privacy: .public) notifications: \(titles, privacy: .public)")
-        }
 
         let captured = wanted.map { banner in
             CapturedNotification(
@@ -1183,8 +1122,7 @@ final class NotificationMonitor: ObservableObject {
                 title: banner.title,
                 subtitle: banner.subtitle,
                 body: banner.body,
-                date: .now,
-                actions: banner.actions
+                date: .now
             )
         }
         items.insert(contentsOf: captured.reversed(), at: 0)
@@ -1195,9 +1133,17 @@ final class NotificationMonitor: ObservableObject {
     }
 
     private static func bundleIdentifier(forAppNamed name: String) -> String? {
-        NSWorkspace.shared.runningApplications
-            .first { $0.localizedName == name }?
-            .bundleIdentifier
+        let apps = NSWorkspace.shared.runningApplications.filter {
+            ($0.localizedName ?? "").withoutDirectionMarks == name
+        }
+        if let app = apps.first(where: { $0.activationPolicy == .regular }) ?? apps.first {
+            return app.bundleIdentifier
+        }
+        for folder in ["/Applications", "/System/Applications"] {
+            let url = URL(fileURLWithPath: "\(folder)/\(name).app")
+            if let identifier = Bundle(url: url)?.bundleIdentifier { return identifier }
+        }
+        return nil
     }
 
     fileprivate struct RawBanner {
@@ -1206,7 +1152,6 @@ final class NotificationMonitor: ObservableObject {
         let title: String
         let subtitle: String
         let body: String
-        var actions: [NotificationAction] = []
 
         /// A stack keeps its identifier while new messages replace its top
         /// one (e.g. several WhatsApp messages from one chat), so the text
@@ -1307,385 +1252,11 @@ final class NotificationMonitor: ObservableObject {
         appName = appName.withoutDirectionMarks
         var id = string(element, kAXIdentifierAttribute) ?? ""
         if id.isEmpty { id = appName }
-        return RawBanner(
-            id: id, appName: appName, title: title, subtitle: subtitle, body: body,
-            actions: buttons(of: element)
-        )
-    }
-
-    // MARK: Buttons and replies
-
-    /// Button titles that aren't actions on the message itself.
-    private static let ignoredButtonTitles: Set<String> = [
-        "kapat", "close", "göster", "show", "seçenekler", "options", "temizle", "clear",
-        "tümünü temizle", "clear all", "tümünü sil", "sil", "delete", "delete all",
-        "ayrıntıları göster", "show details", "ayrıntıları gizle", "hide details",
-        "daha az göster", "show less", "gönder", "send"
-    ]
-
-    /// The named actions on a banner (or the banner inside a stack).
-    nonisolated private static func buttons(of element: AXUIElement) -> [NotificationAction] {
-        let own = namedActions(of: element)
-        if !own.isEmpty { return own }
-        for child in children(of: element) where (string(child, kAXSubroleAttribute) ?? "").hasPrefix("AXNotificationCenter") {
-            let nested = namedActions(of: child)
-            if !nested.isEmpty { return nested }
-        }
-        return []
-    }
-
-    nonisolated private static func namedActions(of element: AXUIElement) -> [NotificationAction] {
-        var names: CFArray?
-        guard AXUIElementCopyActionNames(element, &names) == .success,
-              let list = names as? [String] else { return [] }
-        return list.compactMap { name in
-            guard name.hasPrefix("Name:") else { return nil }
-            var described: CFString?
-            var title = ""
-            if AXUIElementCopyActionDescription(element, name as CFString, &described) == .success,
-               let described = described as String? {
-                title = described
-            }
-            if title.isEmpty || title == name {
-                title = String(name.dropFirst("Name:".count)).components(separatedBy: "\n").first ?? ""
-            }
-            title = title.withoutDirectionMarks
-            guard !title.isEmpty, !ignoredButtonTitles.contains(title.lowercased()) else { return nil }
-            return NotificationAction(name: name, title: title)
-        }
-    }
-
-    private var notificationCenterPID: pid_t? {
-        NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.notificationcenterui")
-            .first?.processIdentifier
-    }
-
-    /// The banner on screen with this notification's key.
-    nonisolated private static func locateBanner(key: String, processIdentifier pid: pid_t) -> AXUIElement? {
-        let application = AXUIElementCreateApplication(pid)
-        AXUIElementSetMessagingTimeout(application, 0.25)
-        for window in children(of: application) where string(window, kAXSubroleAttribute) == "AXSystemDialog" {
-            if let found = locateBanner(key: key, in: window, depth: 0) { return found }
-        }
-        return nil
-    }
-
-    nonisolated private static func locateBanner(key: String, in element: AXUIElement, depth: Int) -> AXUIElement? {
-        guard depth < 10 else { return nil }
-        if (string(element, kAXSubroleAttribute) ?? "").hasPrefix("AXNotificationCenter") {
-            return banner(from: element)?.key == key ? element : nil
-        }
-        for child in children(of: element) {
-            if let found = locateBanner(key: key, in: child, depth: depth + 1) { return found }
-        }
-        return nil
-    }
-
-    /// Presses a named action on the banner, or on the banner in a stack.
-    nonisolated private static func press(_ name: String, on banner: AXUIElement) -> Bool {
-        // Notification Center answers "failure" for buttons it did press.
-        func done(_ result: AXError) -> Bool { result == .success || result == .failure }
-        if done(AXUIElementPerformAction(banner, name as CFString)) { return true }
-        for child in children(of: banner)
-        where done(AXUIElementPerformAction(child, name as CFString)) {
-            return true
-        }
-        return false
-    }
-
-    /// Types into whatever has focus in Notification Center, as keystrokes
-    /// sent to its process only, so the app the user is in isn't touched.
-    nonisolated private static func type(_ text: String, intoProcess pid: pid_t) {
-        for character in text {
-            var units = Array(String(character).utf16)
-            for isDown in [true, false] {
-                guard let event = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: isDown) else { continue }
-                event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: &units)
-                event.postToPid(pid)
-            }
-            usleep(6_000)
-        }
-    }
-
-    /// The named action on `element` whose title has one of `words`.
-    nonisolated private static func action(on element: AXUIElement, titled words: [String]) -> String? {
-        var names: CFArray?
-        guard AXUIElementCopyActionNames(element, &names) == .success,
-              let list = names as? [String] else { return nil }
-        return list.first { name in
-            var described: CFString?
-            AXUIElementCopyActionDescription(element, name as CFString, &described)
-            let title = ((described as String?) ?? name).withoutDirectionMarks.lowercased()
-            return words.contains { title.contains($0) }
-        }
-    }
-
-    /// The banner holding the open reply box.
-    nonisolated private static func bannerWithReplyBox(in window: AXUIElement) -> AXUIElement? {
-        func holdsField(_ element: AXUIElement, _ depth: Int) -> Bool {
-            guard depth < 10 else { return false }
-            let role = string(element, kAXRoleAttribute) ?? ""
-            if role == kAXTextAreaRole as String || role == kAXTextFieldRole as String { return true }
-            return children(of: element).contains { holdsField($0, depth + 1) }
-        }
-        return firstElement(in: window, depth: 0) { element in
-            (string(element, kAXSubroleAttribute) ?? "").hasPrefix("AXNotificationCenter") && holdsField(element, 0)
-        }
-    }
-
-    /// Where to type in an open reply box: the first editable text in a
-    /// banner window.
-    nonisolated private static func replyField(processIdentifier pid: pid_t) -> (window: AXUIElement, field: AXUIElement)? {
-        let application = AXUIElementCreateApplication(pid)
-        AXUIElementSetMessagingTimeout(application, 0.25)
-        for window in children(of: application) where string(window, kAXSubroleAttribute) == "AXSystemDialog" {
-            if let field = firstElement(in: window, depth: 0, where: { element in
-                let role = string(element, kAXRoleAttribute) ?? ""
-                guard role == kAXTextAreaRole as String || role == kAXTextFieldRole as String else { return false }
-                var settable: DarwinBoolean = false
-                return AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable) == .success
-                    && settable.boolValue
-            }) {
-                return (window, field)
-            }
-        }
-        return nil
-    }
-
-    nonisolated private static func firstElement(
-        in element: AXUIElement,
-        depth: Int,
-        where matches: (AXUIElement) -> Bool
-    ) -> AXUIElement? {
-        guard depth < 12 else { return nil }
-        if matches(element) { return element }
-        for child in children(of: element) {
-            if let found = firstElement(in: child, depth: depth + 1, where: matches) { return found }
-        }
-        return nil
-    }
-
-    /// A button in the reply box by its title, description or identifier.
-    nonisolated private static func button(in window: AXUIElement, matching words: Set<String>) -> AXUIElement? {
-        firstElement(in: window, depth: 0) { element in
-            guard string(element, kAXRoleAttribute) == kAXButtonRole as String else { return false }
-            let labels = [kAXTitleAttribute, kAXDescriptionAttribute, kAXIdentifierAttribute]
-                .compactMap { string(element, $0)?.lowercased() }
-            return labels.contains { label in words.contains { label == $0 || label.contains($0) } }
-        }
-    }
-
-    /// The reply box's buttons and fields, once, so a macOS that names
-    /// them differently shows up in the log.
-    nonisolated private static func logReplyBox(_ window: AXUIElement) {
-        var parts: [String] = []
-        func walk(_ element: AXUIElement, _ depth: Int) {
-            guard depth < 12, parts.count < 40 else { return }
-            let role = string(element, kAXRoleAttribute) ?? ""
-            if role == kAXButtonRole as String || role == kAXTextAreaRole as String || role == kAXTextFieldRole as String {
-                let label = [kAXTitleAttribute, kAXDescriptionAttribute, kAXIdentifierAttribute]
-                    .compactMap { string(element, $0) }.filter { !$0.isEmpty }.joined(separator: "/")
-                parts.append("\(role)(\(label))")
-            }
-            for child in children(of: element) { walk(child, depth + 1) }
-        }
-        walk(window, 0)
-        notificationLog.notice("Reply box: \(parts.joined(separator: ", "), privacy: .public)")
-    }
-
-    enum ReplyStart {
-        /// The notch types into macOS's reply box.
-        case inNotch
-        /// macOS's own reply box is back on screen.
-        case onBanner
-        /// The banner is gone; the app has to be opened.
-        case unavailable
-    }
-
-    /// Presses one of the notification's buttons on macOS's banner. False
-    /// once the banner has gone into Notification Center.
-    func perform(_ action: NotificationAction, on item: CapturedNotification, completion: @escaping (Bool) -> Void) {
-        #if DEBUG
-        if item.id.hasPrefix("debug-") { completion(true); return }
-        #endif
-        guard let pid = notificationCenterPID else { completion(false); return }
-        let key = item.id
-        scanQueue.async {
-            let done = Self.locateBanner(key: key, processIdentifier: pid).map { Self.press(action.name, on: $0) } ?? false
-            DispatchQueue.main.async { completion(done) }
-        }
-    }
-
-    /// Opens the banner's reply box. islo. then types into it from the
-    /// notch, or, when it can't find where to type, brings macOS's box on
-    /// screen.
-    func beginReply(to item: CapturedNotification, completion: @escaping (ReplyStart) -> Void) {
-        #if DEBUG
-        if item.id.hasPrefix("debug-") { completion(.inNotch); return }
-        #endif
-        guard let action = item.replyAction, let pid = notificationCenterPID else {
-            completion(.unavailable)
-            return
-        }
-        let key = item.id
-        let hider = hider
-        let session = replySession
-        scanQueue.async {
-            guard let banner = Self.locateBanner(key: key, processIdentifier: pid) else {
-                DispatchQueue.main.async { completion(.unavailable) }
-                return
-            }
-            // Notification Center may answer "failure" yet open the box, so
-            // the box itself is what counts.
-            _ = Self.press(action.name, on: banner)
-            hider.holdsHidden = true
-            // macOS turns the banner into its reply box; wait for the field.
-            var found: (window: AXUIElement, field: AXUIElement)?
-            for _ in 0..<12 {
-                found = Self.replyField(processIdentifier: pid)
-                if found != nil { break }
-                Thread.sleep(forTimeInterval: 0.1)
-            }
-            if let found {
-                Self.logReplyBox(found.window)
-                session.window = found.window
-                session.field = found.field
-                session.processIdentifier = pid
-                DispatchQueue.main.async { completion(.inNotch) }
-            } else {
-                notificationLog.notice("No reply field after Reply; showing macOS's banner")
-                hider.holdsHidden = false
-                hider.keepsVisible = true
-                hider.restore()
-                DispatchQueue.main.async { completion(.onBanner) }
-            }
-        }
-    }
-
-    /// Writes the reply into macOS's box and sends it. When macOS doesn't
-    /// take it, its box comes on screen with the text in it.
-    func sendReply(_ text: String, completion: @escaping (Bool) -> Void) {
-        let hider = hider
-        let session = replySession
-        scanQueue.async {
-            #if DEBUG
-            if session.window == nil {
-                DispatchQueue.main.async { completion(true) }
-                return
-            }
-            #endif
-            var sent = false
-            if let window = session.window, let field = session.field {
-                let pid = session.processIdentifier
-                AXUIElementSetAttributeValue(field, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-                // Real keystrokes, so the app's reply box sees typing.
-                Self.type(text, intoProcess: pid)
-                Thread.sleep(forTimeInterval: 0.15)
-                if Self.string(field, kAXValueAttribute) != text {
-                    AXUIElementSetAttributeValue(field, kAXValueAttribute as CFString, text as CFString)
-                }
-                let typed = !(Self.string(field, kAXValueAttribute) ?? "").isEmpty
-                if typed, let send = Self.button(in: window, matching: ["gönder", "send"]) {
-                    AXUIElementPerformAction(send, kAXPressAction as CFString)
-                    // The box closes once the reply is on its way.
-                    for _ in 0..<20 {
-                        Thread.sleep(forTimeInterval: 0.1)
-                        if Self.replyField(processIdentifier: pid) == nil {
-                            sent = true
-                            break
-                        }
-                    }
-                }
-            }
-            session.window = nil
-            session.field = nil
-            hider.holdsHidden = false
-            if !sent {
-                notificationLog.notice("Couldn't send the reply from the notch; showing macOS's box")
-                hider.keepsVisible = true
-                hider.restore()
-            }
-            DispatchQueue.main.async { completion(sent) }
-        }
-    }
-
-    /// Leaves the reply: macOS's box is closed with its own Cancel, or
-    /// shown so it isn't left open off screen.
-    func cancelReply() {
-        let hider = hider
-        let session = replySession
-        scanQueue.async {
-            if let window = session.window {
-                // "Hide Details" folds the box away and keeps the notification
-                // (its Close button would delete it).
-                if let banner = Self.bannerWithReplyBox(in: window),
-                   let hide = Self.action(on: banner, titled: ["gizle", "hide"]) {
-                    _ = Self.press(hide, on: banner)
-                } else {
-                    hider.keepsVisible = true
-                    hider.restore()
-                }
-            }
-            session.window = nil
-            session.field = nil
-            hider.holdsHidden = false
-        }
+        return RawBanner(id: id, appName: appName, title: title, subtitle: subtitle, body: body)
     }
 
     #if DEBUG
-    /// Debug builds: runs the reply path on the first notification with a
-    /// Reply button (a banner, or one in the open panel): opens its box,
-    /// types "deneme", reads it back, clears it and folds the box away.
-    /// It never presses Send.
-    func debugProbeReply() {
-        guard let pid = notificationCenterPID else { return }
-        scanQueue.async {
-            let application = AXUIElementCreateApplication(pid)
-            var target: (banner: AXUIElement, reply: NotificationAction)?
-            for window in Self.children(of: application) where Self.string(window, kAXSubroleAttribute) == "AXSystemDialog" {
-                if let banner = Self.firstElement(in: window, depth: 0, where: { element in
-                    (Self.string(element, kAXSubroleAttribute) ?? "").hasPrefix("AXNotificationCenter")
-                        && Self.buttons(of: element).contains(where: \.isReply)
-                }), let reply = Self.buttons(of: banner).first(where: \.isReply) {
-                    target = (banner, reply)
-                    break
-                }
-            }
-            guard let target else {
-                notificationLog.notice("Probe: no notification with a Reply button")
-                return
-            }
-            notificationLog.notice("Probe: Reply button is \(target.reply.title, privacy: .public)")
-            _ = Self.press(target.reply.name, on: target.banner)
-            var found: (window: AXUIElement, field: AXUIElement)?
-            for _ in 0..<12 {
-                found = Self.replyField(processIdentifier: pid)
-                if found != nil { break }
-                Thread.sleep(forTimeInterval: 0.1)
-            }
-            guard let found else {
-                notificationLog.notice("Probe: no reply box opened")
-                return
-            }
-            AXUIElementSetAttributeValue(found.field, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-            Self.type("deneme", intoProcess: pid)
-            Thread.sleep(forTimeInterval: 0.2)
-            let typed = Self.string(found.field, kAXValueAttribute) ?? ""
-            let hasSend = Self.button(in: found.window, matching: ["gönder", "send"]) != nil
-            AXUIElementSetAttributeValue(found.field, kAXValueAttribute as CFString, "" as CFString)
-            var folded = false
-            if let banner = Self.bannerWithReplyBox(in: found.window),
-               let hide = Self.action(on: banner, titled: ["gizle", "hide"]) {
-                _ = Self.press(hide, on: banner)
-                Thread.sleep(forTimeInterval: 0.4)
-                folded = Self.replyField(processIdentifier: pid) == nil
-            }
-            notificationLog.notice("Probe: typed=\(typed == "deneme", privacy: .public) send=\(hasSend, privacy: .public) folded=\(folded, privacy: .public)")
-        }
-    }
-
-    /// Debug builds: a notification with Reply and Mark as Read, arrived
-    /// `age` seconds ago.
+    /// Debug builds: a notification that arrived `age` seconds ago.
     func debugInject(age: TimeInterval = 0) {
         let item = CapturedNotification(
             id: "debug-\(UUID().uuidString)",
@@ -1694,11 +1265,7 @@ final class NotificationMonitor: ObservableObject {
             title: age > 0 ? "Eski mesaj" : "Ahmet",
             subtitle: "",
             body: age > 0 ? "2 saat önce geldi" : "Akşam geliyor musun?",
-            date: Date().addingTimeInterval(-age),
-            actions: [
-                NotificationAction(name: "debug-reply", title: "Yanıtla"),
-                NotificationAction(name: "debug-read", title: "Okundu olarak işaretle")
-            ]
+            date: Date().addingTimeInterval(-age)
         )
         items.insert(item, at: 0)
         unreadCount += 1

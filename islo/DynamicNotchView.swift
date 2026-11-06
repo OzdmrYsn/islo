@@ -10,16 +10,6 @@ enum NotchPresentationState: Equatable {
 
 private enum ShelfFilter { case all, images, documents }
 
-/// Where a notification's buttons stand: ready, replying from the notch,
-/// then done or handed to macOS / the app.
-private enum ReplyPhase: Equatable {
-    case none
-    case opening
-    case typing
-    case sending
-    case done(String)
-    case handedOff(String)
-}
 
 private enum ClipboardFilter { case all, text, links }
 
@@ -196,12 +186,9 @@ struct DynamicNotchView: View {
     @State private var displayedEchoRevision = 0
     /// While the pointer is on a HUD with buttons it stays up.
     @State private var isEchoHovered = false
-    @State private var replyPhase: ReplyPhase = .none
     @State private var showsHourlyWeather = false
     /// The tab whose filter row shows the auto-clear choices.
     @State private var autoClearPicker: DashboardSection?
-    @State private var replyText = ""
-    @FocusState private var isReplyFieldFocused: Bool
     @State private var echoActionDone: String?
     /// A meeting alert that arrived while the dashboard was open.
     @State private var pendingEventAlert: CalendarEventInfo?
@@ -396,12 +383,6 @@ struct DynamicNotchView: View {
         .onReceive(weatherManager.$rainAlertRevision.dropFirst()) { _ in
             guard let outlook = weatherManager.rainAlert else { return }
             commandEchoManager.showRain(outlook)
-        }
-        .onChange(of: isCommandEchoVisible) { visible in
-            guard !visible, replyPhase != .none else { return }
-            if replyPhase == .typing || replyPhase == .opening { notificationMonitor.cancelReply() }
-            releaseTypingFocus()
-            replyPhase = .none
         }
         .onReceive(mediaManager.$isPlaying.dropFirst().removeDuplicates()) { playing in
             updateIdleWings(isPlaying: playing)
@@ -666,7 +647,7 @@ struct DynamicNotchView: View {
     private var privacyAppBadge: some View {
         let usage = privacyMonitor.usage
         if let name = usage.appName,
-           let icon = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == name })?.icon {
+           let icon = NSWorkspace.shared.runningApplications.first(where: { ($0.localizedName ?? "").withoutDirectionMarks == name.withoutDirectionMarks })?.icon {
             Image(nsImage: icon)
                 .resizable()
                 .interpolation(.high)
@@ -3342,200 +3323,12 @@ struct DynamicNotchView: View {
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.isButton)
             .accessibilityHint(Text(localized("Bildirimleri açar", "Opens notifications")))
-
-            if showsNotificationActionRow(item) {
-                notificationActionRow(item)
-                    .padding(.horizontal, bodyPadding(18, gap: 16))
-                    .padding(.top, 10)
-            }
         }
         .foregroundStyle(.white)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onHover(perform: echoHoverChanged)
-    }
-
-    // MARK: Notification buttons and replies
-
-    /// The row under a notification: its buttons, the reply field while
-    /// replying, then how it went.
-    private func showsNotificationActionRow(_ item: CapturedNotification) -> Bool {
-        settings.notificationPreviewStyle == .content && (!item.actions.isEmpty || replyPhase != .none)
-    }
-
-    @ViewBuilder
-    private func notificationActionRow(_ item: CapturedNotification) -> some View {
-        switch replyPhase {
-        case .opening:
-            HStack(spacing: 8) {
-                ProgressView().controlSize(.small)
-                Text(localized("Yanıt kutusu açılıyor…", "Opening the reply box…"))
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.65))
-            }
-            .frame(height: 28)
-        case .typing, .sending:
-            HStack(spacing: 7) {
-                let hasText = !replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                TextField(localized("Yanıt yaz…", "Write a reply…"), text: $replyText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 11.5))
-                    .focused($isReplyFieldFocused)
-                    .onSubmit { sendReply() }
-                    .onExitCommand(perform: cancelReply)
-                    .disabled(replyPhase == .sending)
-                    .padding(.horizontal, 11)
-                    .frame(height: 25)
-                    .background(Capsule().fill(Color.white.opacity(0.07)))
-                    .overlay(Capsule().strokeBorder(accent.opacity(0.45), lineWidth: 0.75))
-                Button(action: sendReply) {
-                    Group {
-                        if replyPhase == .sending {
-                            ProgressView().controlSize(.mini)
-                        } else {
-                            Image(systemName: "paperplane.fill")
-                                .font(.system(size: 9.5, weight: .semibold))
-                                .foregroundStyle(hasText ? Color.black.opacity(0.8) : accent)
-                        }
-                    }
-                    .frame(width: 25, height: 25)
-                    .background(Circle().fill(hasText ? accent : accent.opacity(0.14)))
-                    .overlay(Circle().strokeBorder(accent.opacity(hasText ? 0 : 0.35), lineWidth: 0.5))
-                    .animation(.easeOut(duration: 0.15), value: hasText)
-                }
-                .buttonStyle(PillPressStyle())
-                .disabled(!hasText || replyPhase == .sending)
-                .help(localized("Gönder (Return)", "Send (Return)"))
-                Button(action: cancelReply) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8.5, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .frame(width: 25, height: 25)
-                        .background(Circle().fill(Color.white.opacity(0.07)))
-                        .overlay(Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
-                }
-                .buttonStyle(PillPressStyle())
-                .help(localized("Vazgeç (Esc)", "Cancel (Esc)"))
-            }
-        case .done(let message):
-            Label(message, systemImage: "checkmark.circle.fill")
-                .font(.system(size: 11.5, weight: .semibold))
-                .foregroundStyle(Color.green)
-                .frame(height: 28)
-        case .handedOff(let message):
-            Label(message, systemImage: "arrow.up.forward.app.fill")
-                .font(.system(size: 11.5, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.75))
-                .frame(height: 28)
-        case .none:
-            HStack(spacing: 6) {
-                if item.replyAction != nil {
-                    notificationButton(localized("Yanıtla", "Reply"), symbol: "arrowshape.turn.up.left", prominent: true) {
-                        startReply(item)
-                    }
-                }
-                ForEach(Array(item.otherActions.prefix(2)), id: \.self) { action in
-                    notificationButton(action.title, symbol: nil, prominent: false) {
-                        performNotificationAction(action, on: item)
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    private func notificationButton(
-        _ title: String,
-        symbol: String?,
-        prominent: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        NotificationPill(title: title, symbol: symbol, tint: prominent ? accent : nil, action: action)
-    }
-
-    private var isReplyActive: Bool {
-        replyPhase == .opening || replyPhase == .typing || replyPhase == .sending
     }
 
     private var vipGold: Color { Color(red: 1, green: 0.8, blue: 0.32) }
-
-    private func startReply(_ item: CapturedNotification) {
-        commandEchoTask?.cancel()
-        replyText = ""
-        withAnimation(.easeOut(duration: 0.16)) { replyPhase = .opening }
-        resizeSurface(to: preferredSize, animation: .easeOut(duration: 0.16))
-        notificationMonitor.beginReply(to: item) { start in
-            switch start {
-            case .inNotch:
-                withAnimation(.easeOut(duration: 0.16)) { replyPhase = .typing }
-                focusNotchForTyping()
-            case .onBanner:
-                finishNotificationAction(.handedOff(localized("macOS'un yanıt kutusu açıldı", "macOS's reply box is open")))
-            case .unavailable:
-                notificationMonitor.openApplication(for: item)
-                finishNotificationAction(.handedOff(localized("Uygulamada yanıtla", "Reply in the app")))
-            }
-        }
-    }
-
-    private func sendReply() {
-        let text = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard replyPhase == .typing, !text.isEmpty else { return }
-        replyPhase = .sending
-        notificationMonitor.sendReply(text) { sent in
-            finishNotificationAction(sent
-                ? .done(localized("Gönderildi", "Sent"))
-                : .handedOff(localized("macOS'un kutusundan gönder", "Send it from macOS's box")))
-        }
-    }
-
-    private func cancelReply() {
-        guard replyPhase == .typing || replyPhase == .opening else { return }
-        notificationMonitor.cancelReply()
-        releaseTypingFocus()
-        withAnimation(.easeOut(duration: 0.16)) { replyPhase = .none }
-        resizeSurface(to: preferredSize, animation: .easeOut(duration: 0.16))
-        scheduleEchoHide(after: 2)
-    }
-
-    private func performNotificationAction(_ action: NotificationAction, on item: CapturedNotification) {
-        commandEchoTask?.cancel()
-        notificationMonitor.perform(action, on: item) { done in
-            if done {
-                finishNotificationAction(.done(action.title))
-            } else {
-                // The banner already went into Notification Center.
-                notificationMonitor.openApplication(for: item)
-                finishNotificationAction(.handedOff(localized("Uygulama açıldı", "Opened the app")))
-            }
-        }
-    }
-
-    private func finishNotificationAction(_ phase: ReplyPhase) {
-        releaseTypingFocus()
-        withAnimation(.easeOut(duration: 0.16)) { replyPhase = phase }
-        resizeSurface(to: preferredSize, animation: .easeOut(duration: 0.16))
-        isEchoHovered = false
-        scheduleEchoHide(after: 1.4)
-    }
-
-    /// A non-activating panel takes typing without bringing islo. forward,
-    /// so the app the user is in stays in front.
-    private func focusNotchForTyping() {
-        notchPanel?.makeKey()
-        DispatchQueue.main.async { isReplyFieldFocused = true }
-    }
-
-    /// Hands the keyboard back to the app the user was in.
-    private func releaseTypingFocus() {
-        isReplyFieldFocused = false
-        if notchPanel?.isKeyWindow == true {
-            NSWorkspace.shared.frontmostApplication?.activate(options: [])
-        }
-    }
-
-    private var notchPanel: NSWindow? {
-        NSApp.windows.first { $0.identifier?.rawValue == "isloFloatingNotch" }
-    }
 
     private var systemEchoHUD: some View {
         Group {
@@ -3812,13 +3605,12 @@ struct DynamicNotchView: View {
         case .screenshot: isAllowed = settings.dashboardCommandEchoEnabled && !settings.screenshotPreviewEnabled
         default: isAllowed = settings.dashboardCommandEchoEnabled
         }
-        guard isAllowed, presentation == .idle, !isReplyActive else { return }
+        guard isAllowed, presentation == .idle else { return }
         // Volume, copy and the like never cover a notification, a meeting,
         // a finished timer or a device/privacy alert that is showing.
         if isCommandEchoVisible, displayedEcho.isImportant, !incoming.isImportant { return }
         commandEchoTask?.cancel()
         displayedEcho = incoming
-        replyPhase = .none
         displayedEchoRevision &+= 1
         echoActionDone = nil
         let echoAnimation: Animation = reduceMotion
@@ -3831,8 +3623,8 @@ struct DynamicNotchView: View {
         let duration: Double
         switch incoming {
         case .notification(let item):
-            // VIPs stay longer; buttons need time to be reached.
-            duration = settings.isVIP(item) ? 9 : (item.actions.isEmpty ? 4.5 : 7)
+            // Messages from VIPs stay longer.
+            duration = settings.isVIP(item) ? 9 : 4.5
         case .headphones: duration = 4.5
         case .timerFinished: duration = 5
         case .upcomingEvent: duration = 10
@@ -3859,7 +3651,7 @@ struct DynamicNotchView: View {
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                guard !isEchoHovered, !isReplyActive else { return }
+                guard !isEchoHovered else { return }
                 withAnimation(echoAnimation) {
                     isCommandEchoVisible = false
                 }
@@ -3887,8 +3679,6 @@ struct DynamicNotchView: View {
         guard isCommandEchoVisible else { return false }
         switch displayedEcho {
         case .screenshotPreview, .downloadFinished, .upcomingEvent, .rain: return true
-        case .notification(let item):
-            return settings.notificationPreviewStyle == .content && !item.actions.isEmpty
         default: return false
         }
     }
@@ -4533,13 +4323,12 @@ struct DynamicNotchView: View {
     private var commandEchoPreferredSize: CGSize {
         // A notification with its content gets a second row under the
         // camera housing for the title and message.
-        if case .notification(let item) = displayedEcho,
+        if case .notification = displayedEcho,
            settings.notificationPreviewStyle == .content {
             let width = layout.hasCameraHousing
                 ? min(max(layout.cameraHousingWidth + 340, 520), layout.screenWidth - 24)
                 : min(440, layout.screenWidth - 24)
-            let actionRow: CGFloat = showsNotificationActionRow(item) ? 38 : 0
-            let height = (layout.hasCameraHousing ? layout.notchBandHeight + 46 : 76) + actionRow
+            let height = layout.hasCameraHousing ? layout.notchBandHeight + 46 : 76
             return CGSize(width: width, height: height)
         }
         if case .rain = displayedEcho {
@@ -4903,55 +4692,6 @@ private struct BatteryGlyph: View {
             }
         }
         .accessibilityHidden(true)
-    }
-}
-
-/// A light pill for a notification's buttons: the accent's tint and a
-/// hairline for Reply, a quiet glass one for the rest. Brightens a little
-/// under the pointer.
-private struct NotificationPill: View {
-    let title: String
-    let symbol: String?
-    /// The accent for the main button; nil for the others.
-    let tint: Color?
-    let action: () -> Void
-
-    @State private var isHovered = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                if let symbol {
-                    Image(systemName: symbol)
-                        .font(.system(size: 8.5, weight: .semibold))
-                }
-                Text(title)
-                    .font(.system(size: 10.5, weight: .medium))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(tint ?? Color.white.opacity(isHovered ? 0.95 : 0.78))
-            .padding(.horizontal, 10)
-            .frame(height: 23)
-            .background(
-                Capsule().fill((tint ?? .white).opacity(tint == nil ? (isHovered ? 0.12 : 0.07) : (isHovered ? 0.22 : 0.14)))
-            )
-            .overlay(
-                Capsule().strokeBorder((tint ?? .white).opacity(tint == nil ? 0.12 : 0.35), lineWidth: 0.5)
-            )
-            .contentShape(Capsule())
-        }
-        .buttonStyle(PillPressStyle())
-        .onHover { isHovered = $0 }
-        .animation(.easeOut(duration: 0.12), value: isHovered)
-    }
-}
-
-/// Presses in slightly, like the notch's other controls.
-private struct PillPressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }
 

@@ -882,7 +882,7 @@ struct SettingsView: View {
     }
 
     private static func appIcon(named name: String) -> NSImage? {
-        if let running = NSWorkspace.shared.runningApplications.first(where: { $0.localizedName == name }),
+        if let running = NSWorkspace.shared.runningApplications.first(where: { ($0.localizedName ?? "").withoutDirectionMarks == name }),
            let icon = running.icon {
             return icon
         }
