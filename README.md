@@ -35,7 +35,6 @@ islo., medya kontrollerini ve günlük araçları MacBook'un kamera çentiğiyle
 - Ekran görüntüsü önizlemesi: sürükle-bırak, kopyala, rafa ekle, göster, sil
 - Kapalı çentikte indirme ilerlemesi (Safari, Chrome, AirDrop) ve Aç/Göster
 - Kısayollar sekmesi ve Pomodoro odak başlangıç/bitiş otomasyonları
-- Bildirimden hızlı yanıt ve bildirimin kendi düğmeleri (ör. Okundu olarak işaretle)
 - Bildirimler için uygulama kuralları ve altın renkli VIP kişiler
 - Bir saat içinde başlayacak yağmur için uyarı ve saatlik hava tahmini
 - Bildirimleri, Dosya Rafı'nı ve Pano'yu belli bir süre sonra otomatik temizleme (her sekmenin saat düğmesinden)
@@ -87,7 +86,6 @@ islo. is a SwiftUI + AppKit app that blends media controls and everyday utilitie
 - Screenshot preview: drag and drop, copy, add to the shelf, reveal, delete
 - Download progress in the closed notch (Safari, Chrome, AirDrop) with Open/Show
 - A Shortcuts tab and Pomodoro focus start/end automations
-- Quick reply from notifications, plus their own buttons (e.g. Mark as Read)
 - App rules for notifications and VIP people shown in gold
 - An alert for rain starting within the hour, and an hourly forecast
 - Notifications, File Shelf and Clipboard that clear themselves after a set time (from each tab's clock)
