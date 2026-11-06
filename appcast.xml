@@ -3,6 +3,34 @@
     <channel>
         <title>islo.</title>
         <item>
+            <title>2.5.3</title>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
+<h3>Türkçe</h3>
+<p>islo. 2.5.3 ile bildirimler çentikte sade ve güvenilir.</p>
+<h4>Değişiklikler</h4>
+<ul>
+<li><b>Bildirimler yalnızca gösterilir:</b> Çentikteki bildirimlerden "Yanıtla" ve "Okundu olarak işaretle" gibi düğmeler kaldırıldı. macOS'un balonu üzerinden yanıt vermek her uygulamada güvenilir çalışmıyordu; WhatsApp yanıtları boş alıp "Cevabınız gönderilemedi" diyordu. Bildirime tıklayınca bildirim listesi açılır.</li>
+<li><b>Yerinde kalanlar:</b> VIP kişiler altın rengiyle ve daha uzun süre görünür. Hangi uygulamaların çentikte görüneceğini Ayarlar'dan seçersin. WhatsApp kendi simgesiyle görünür.</li>
+</ul>
+<p><i>İzinlerin bu güncellemede korunur.</i></p>
+<h3>English</h3>
+<p>islo. 2.5.3 keeps notifications in the notch simple and dependable.</p>
+<h4>Changes</h4>
+<ul>
+<li><b>Notifications are shown only:</b> Buttons like "Reply" and "Mark as Read" are gone from the notch. Replying through macOS's banner didn't work reliably for every app; WhatsApp received replies empty and said "Your reply couldn't be sent". Clicking a notification opens the list.</li>
+<li><b>Still here:</b> VIPs show in gold and stay longer. You choose which apps show in the notch in Settings. WhatsApp shows with its own icon.</li>
+</ul>
+<p><i>Your permissions are kept with this update.</i></p>
+]]></description>
+            <pubDate>Fri, 06 Nov 2026 14:14:30 +0300</pubDate>
+            <link>https://github.com/OzdmrYsn/islo</link>
+            <sparkle:version>28</sparkle:version>
+            <sparkle:shortVersionString>2.5.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.3/islo-2.5.3.zip" length="6406170" type="application/octet-stream" sparkle:edSignature="CsqeQIVDV35WugZLu87VmZuKmfFuZoqYV0iTIOu3tJVplnZVzRLCHdHokNpG38Lxdoq6gizBjO+hTH/Y3kvPAg=="/>
+        </item>
+        <item>
             <title>2.5.2</title>
             <description><![CDATA[
 <style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
@@ -79,56 +107,6 @@
             <sparkle:shortVersionString>2.5.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.1/islo-2.5.1.zip" length="6562332" type="application/octet-stream" sparkle:edSignature="+mchnwtGzn71UeD6kYS6K9K0XmBLHT2Tce6TaWlnlBhpeY3x8ytp0AbKcKMUBRMfKdRr/oneGd/TMHkqEti5BQ=="/>
-        </item>
-        <item>
-            <title>2.5.0</title>
-            <description><![CDATA[
-<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
-<h3>Türkçe</h3>
-<p>islo. 2.5 ile mesajlara çentikten yanıt verir, kimin bildiriminin görüneceğini seçer ve yağmurdan önce haber alırsın. Çentiği olmayan Mac'ler de artık kendi çentiğine kavuşuyor.</p>
-<h4>Yeni</h4>
-<ul>
-<li><b>Bildirimden hızlı yanıt:</b> Mesaj çentikte açılınca altında "Yanıtla" ve uygulamanın diğer düğmeleri (ör. "Okundu olarak işaretle") çıkar. Yanıtı çentikte yazıp Return ile gönderirsin; açık olan uygulaman önde kalır.</li>
-<li><b>Uygulama kuralları:</b> Ayarlar › Özellikler › Bildirimler'de bildirim gönderen uygulamalar listelenir. Kapattığın uygulamanın bildirimini çentik göstermez, macOS gösterir.</li>
-<li><b>VIP kişiler:</b> Eklediğin kişilerden gelen mesajlar çentikte altın rengiyle ve daha uzun süre görünür.</li>
-<li><b>Yağmur uyarısı:</b> Yağmur bir saat içinde başlayacaksa çentik "20 dk sonra yağmur" der ve önümüzdeki iki saati çubuklarla gösterir.</li>
-<li><b>Saatlik tahmin:</b> Ana sayfada hava durumuna tıklayınca önümüzdeki saatler açılır: sıcaklık, gökyüzü ve yağış olasılığı.</li>
-<li><b>Otomatik temizleme:</b> Bildirimler ve Dosya Rafı için 1 saat, 1 gün ya da 1 hafta sonra kendiliğinden temizlenme seçeneği. Raftan kalkan dosyalar silinmez.</li>
-</ul>
-<h4>İyileştirmeler</h4>
-<ul>
-<li><b>Çentiği olmayan Mac'ler:</b> islo. ekranın üst kenarından gerçek bir çentik gibi sarkar, boştayken gizlenir. Yazıları kesen kapsül görünümü ve hiç kaybolmayan ses göstergesi düzeldi.</li>
-<li><b>Kamera/mikrofon göstergesi:</b> Küçülmüş hâlde noktalar ve kullanan uygulamanın simgesi kameranın yanında düzgünce durur.</li>
-<li><b>Dosya Rafı:</b> Çok geniş ya da çok uzun görseller artık yanındaki dosyaların üstüne taşmıyor.</li>
-<li><b>Kurulum:</b> Kurulum penceresi ilk açılışta macOS'un istediği "Yine de Aç" adımını gösterir.</li>
-</ul>
-<p><i>İzinlerin bu güncellemede korunur. Hızlı yanıt, macOS'un bildirimde sunduğu düğmeleri kullanır; düğmesi olmayan uygulamalarda görünmez.</i></p>
-<h3>English</h3>
-<p>islo. 2.5 lets you reply from the notch, choose whose notifications show up and hear about rain before it starts. Macs without a notch now get one of their own.</p>
-<h4>New</h4>
-<ul>
-<li><b>Quick reply:</b> When a message opens in the notch, "Reply" and the app's other buttons (e.g. "Mark as Read") appear under it. Type your answer in the notch and press Return; the app you're in stays in front.</li>
-<li><b>App rules:</b> Settings › Features › Notifications lists the apps that send notifications. Turn one off and macOS shows its notifications instead of the notch.</li>
-<li><b>VIP people:</b> Messages from the people you add show in gold and stay longer in the notch.</li>
-<li><b>Rain alert:</b> When rain starts within the hour, the notch says "Rain in 20 min" and shows the next two hours as bars.</li>
-<li><b>Hourly forecast:</b> Click the weather on Home for the next hours: temperature, sky and chance of rain.</li>
-<li><b>Clear automatically:</b> Notifications and the File Shelf can clear themselves after 1 hour, 1 day or 1 week. Files taken off the shelf aren't deleted.</li>
-</ul>
-<h4>Improvements</h4>
-<ul>
-<li><b>Macs without a notch:</b> islo. hangs from the top edge like a real notch and hides while idle. The capsule that cut off text and the volume indicator that never left are fixed.</li>
-<li><b>Camera/mic indicator:</b> In its small state, the dots and the icon of the app using them sit neatly beside the camera.</li>
-<li><b>File Shelf:</b> Very wide or tall images no longer spill over the files next to them.</li>
-<li><b>Install:</b> The install window shows the "Open Anyway" step macOS asks for on first launch.</li>
-</ul>
-<p><i>Your permissions are kept with this update. Quick reply uses the buttons macOS offers on a notification; it doesn't appear for apps that don't have them.</i></p>
-]]></description>
-            <pubDate>Fri, 06 Nov 2026 02:42:32 +0300</pubDate>
-            <link>https://github.com/OzdmrYsn/islo</link>
-            <sparkle:version>25</sparkle:version>
-            <sparkle:shortVersionString>2.5.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.0/islo-2.5.0.zip" length="6506131" type="application/octet-stream" sparkle:edSignature="PAJegTYXd59otd4xD9U/dBLYQJJvyC6cXcXEFr2UBDY1qPLyX70KKU78rlaxmI3EsTkGUpjng4xJYQESZ4ELCw=="/>
         </item>
     </channel>
 </rss>
