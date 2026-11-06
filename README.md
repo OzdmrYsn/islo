@@ -38,7 +38,7 @@ islo., medya kontrollerini ve günlük araçları MacBook'un kamera çentiğiyle
 - Bildirimden hızlı yanıt ve bildirimin kendi düğmeleri (ör. Okundu olarak işaretle)
 - Bildirimler için uygulama kuralları ve altın renkli VIP kişiler
 - Bir saat içinde başlayacak yağmur için uyarı ve saatlik hava tahmini
-- Bildirimleri ve Dosya Rafı'nı belli bir süre sonra otomatik temizleme
+- Bildirimleri, Dosya Rafı'nı ve Pano'yu belli bir süre sonra otomatik temizleme (her sekmenin saat düğmesinden)
 - Eksik izinleri gösteren ve tek tıkla onaran İzinler sayfası
 - Dock simgesi olmadan menü çubuğunda çalışma
 - Tüm Spaces ve tam ekran uygulamalarla çalışma
@@ -90,7 +90,7 @@ islo. is a SwiftUI + AppKit app that blends media controls and everyday utilitie
 - Quick reply from notifications, plus their own buttons (e.g. Mark as Read)
 - App rules for notifications and VIP people shown in gold
 - An alert for rain starting within the hour, and an hourly forecast
-- Notifications and the File Shelf that clear themselves after a set time
+- Notifications, File Shelf and Clipboard that clear themselves after a set time (from each tab's clock)
 - A Permissions page that shows missing permissions and repairs them in one click
 - Menu-bar operation without a Dock icon
 - Works across Spaces and over full-screen apps
