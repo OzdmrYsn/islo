@@ -3,6 +3,44 @@
     <channel>
         <title>islo.</title>
         <item>
+            <title>2.5.1</title>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
+<h3>Türkçe</h3>
+<p>islo. 2.5.1 ile otomatik temizleme kendi sekmelerine taşındı ve Pano'ya da geldi.</p>
+<h4>İyileştirmeler</h4>
+<ul>
+<li><b>Sekmesinde otomatik temizleme:</b> Bildirimler, Dosya Rafı ve Pano sekmelerinde filtrelerin yanında küçük bir saat düğmesi var. Tıklayınca Kapalı, 1 saat, 1 gün ya da 1 hafta seçersin; Ayarlar daha sade.</li>
+<li><b>Pano da temizlenir:</b> Kopyaladığın metinler de seçtiğin süre sonunda geçmişten kalkar.</li>
+<li><b>Her öğe kendi süresiyle:</b> Süre her bildirim, dosya ve metin için kendi geliş zamanından sayılır; eskiler kalkar, yeniler kalır.</li>
+</ul>
+<h4>Düzeltmeler</h4>
+<ul>
+<li><b>Dosya Rafı:</b> islo. açılırken o an ulaşamadığı dosyaları (çıkarılmış bir disk, henüz izin verilmemiş bir klasör) artık raftan silmiyor; yalnızca gizliyor.</li>
+</ul>
+<p><i>İzinlerin bu güncellemede korunur.</i></p>
+<h3>English</h3>
+<p>islo. 2.5.1 moves automatic clearing into each tab and brings it to the Clipboard.</p>
+<h4>Improvements</h4>
+<ul>
+<li><b>Auto-clear in its tab:</b> Notifications, File Shelf and Clipboard have a small clock next to their filters. Click it to pick Off, 1 hour, 1 day or 1 week; Settings stays tidy.</li>
+<li><b>Clipboard clears too:</b> Copied text also leaves the history after the time you choose.</li>
+<li><b>Each item on its own clock:</b> The time counts from when each notification, file or text arrived; older ones go, newer ones stay.</li>
+</ul>
+<h4>Fixes</h4>
+<ul>
+<li><b>File Shelf:</b> Files islo. can't reach at launch (an unplugged drive, a folder macOS hasn't allowed yet) are no longer taken off the shelf; they're just hidden.</li>
+</ul>
+<p><i>Your permissions are kept with this update.</i></p>
+]]></description>
+            <pubDate>Fri, 06 Nov 2026 03:05:46 +0300</pubDate>
+            <link>https://github.com/OzdmrYsn/islo</link>
+            <sparkle:version>26</sparkle:version>
+            <sparkle:shortVersionString>2.5.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.1/islo-2.5.1.zip" length="6562332" type="application/octet-stream" sparkle:edSignature="+mchnwtGzn71UeD6kYS6K9K0XmBLHT2Tce6TaWlnlBhpeY3x8ytp0AbKcKMUBRMfKdRr/oneGd/TMHkqEti5BQ=="/>
+        </item>
+        <item>
             <title>2.5.0</title>
             <description><![CDATA[
 <style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
@@ -81,46 +119,6 @@
             <sparkle:shortVersionString>2.4.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.4.1/islo-2.4.1.zip" length="6029193" type="application/octet-stream" sparkle:edSignature="iFyFVQOOOC8A3qf9Fv/CHffhVlrB0E1A+JWsODqRUhirehVnSaxiXP6yp7ePt691yarbwctpzYBWDFQLqLZNDQ=="/>
-        </item>
-        <item>
-            <title>2.4.0</title>
-            <description><![CDATA[
-<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
-<h3>Türkçe</h3>
-<p>islo. 2.4 ile ilk izlenim baştan yazıldı: yeni bir tanıtım ve yeni bir kurulum penceresi.</p>
-<h4>Yeni</h4>
-<ul>
-<li><b>Baştan tasarlanan tanıtım:</b> islo. bir MacBook ekranının tepesinde canlanır; çentik uyanır, müzik çalar, sırayla mesaj, ses, ekran görüntüsü, indirme, "Süre doldu" ve toplantı uyarısını gösterir. Seni adınla karşılar, rengini ve tonunu seçtikçe canlı olarak değişir.</li>
-<li><b>Çentiğe uçan kapanış:</b> "islo.'yu başlat"a bastığında pencere küçülerek çentiğe uçar, ardından çentik açılıp seni karşılar.</li>
-<li><b>Yeni kurulum penceresi:</b> islo.'yu Uygulamalar'a sürüklediğin DMG artık koyu ve şık; yeni simge disk simgesi olarak da görünür.</li>
-</ul>
-<h4>İyileştirmeler</h4>
-<ul>
-<li>Tanıtımdaki izinler sayfası, Erişilebilirlik ve Takvim izinlerini durumlarıyla birlikte sade kartlarda gösterir.</li>
-<li>Kısayol tuşun tanıtımın son sayfasında klavye tuşları olarak görünür.</li>
-</ul>
-<p><i>Yeni tanıtımı Ayarlar › Hakkında › Tanıtım'dan istediğin zaman açabilirsin. İzinlerin bu güncellemede korunur.</i></p>
-<h3>English</h3>
-<p>islo. 2.4 rewrites the first impression: a new welcome guide and a new install window.</p>
-<h4>New</h4>
-<ul>
-<li><b>Redesigned welcome guide:</b> islo. comes to life at the top of a MacBook display; the notch wakes up, plays music, then shows a message, volume, a screenshot, a download, "Time's up" and a meeting in turn. It greets you by name and changes live as you pick your colour and tone.</li>
-<li><b>A finale into the notch:</b> When you press "Start islo.", the window shrinks into the notch, which then opens to say hello.</li>
-<li><b>New install window:</b> The DMG you drag islo. out of is now dark and polished, with the new icon as the volume icon.</li>
-</ul>
-<h4>Improvements</h4>
-<ul>
-<li>The guide's permissions page shows Accessibility and Calendar access, with their status, in simple cards.</li>
-<li>Your keyboard shortcut appears as keycaps on the last page of the guide.</li>
-</ul>
-<p><i>Open the new guide any time from Settings › About › Welcome guide. Your permissions are kept with this update.</i></p>
-]]></description>
-            <pubDate>Sun, 01 Nov 2026 03:27:41 +0300</pubDate>
-            <link>https://github.com/OzdmrYsn/islo</link>
-            <sparkle:version>23</sparkle:version>
-            <sparkle:shortVersionString>2.4.0</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.4.0/islo-2.4.0.zip" length="6021307" type="application/octet-stream" sparkle:edSignature="LUJ/SZ56aR8rp3IRka3FlbcRWwsObSzVd99xHWVsjXUXUgdEbTbtSSBcBrASz0DGzOmHB+ziG9FQs+RmFi3tAw=="/>
         </item>
     </channel>
 </rss>
