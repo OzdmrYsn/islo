@@ -3,6 +3,46 @@
     <channel>
         <title>islo.</title>
         <item>
+            <title>2.5.2</title>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
+<h3>Türkçe</h3>
+<p>islo. 2.5.2 ile WhatsApp mesajlarına çentikten yanıt verebilirsin.</p>
+<h4>Düzeltmeler</h4>
+<ul>
+<li><b>WhatsApp'tan yanıt:</b> WhatsApp bildirimlerinde "Yanıtla" artık çentikte çıkıyor; cevabını çentikte yazıp Return'e basman yeterli. Önceden macOS'un kendi yanıt kutusu yanda açılıyordu.</li>
+<li><b>Vazgeçince:</b> Yanıttan vazgeçtiğinde yanıt kutusu kapanır, bildirim silinmez.</li>
+<li><b>WhatsApp simgesi:</b> Bildirimlerde WhatsApp'ın kendi simgesi görünür; Ayarlar'daki uygulama listesinde de tek bir WhatsApp kalır.</li>
+<li><b>Daha güvenli düğmeler:</b> "Tümünü Sil" gibi silen düğmeler çentikte gösterilmez.</li>
+</ul>
+<h4>İyileştirmeler</h4>
+<ul>
+<li><b>Daha zarif düğmeler:</b> "Yanıtla" ve diğer bildirim düğmeleri ince, hafif haplar oldu; yanıt alanı ve Gönder düğmesi de onlarla uyumlu.</li>
+</ul>
+<p><i>İzinlerin bu güncellemede korunur.</i></p>
+<h3>English</h3>
+<p>islo. 2.5.2 lets you reply to WhatsApp messages from the notch.</p>
+<h4>Fixes</h4>
+<ul>
+<li><b>Reply to WhatsApp:</b> "Reply" now shows in the notch for WhatsApp notifications; type your answer there and press Return. macOS's own reply box used to open at the side instead.</li>
+<li><b>When you cancel:</b> Cancelling a reply closes the reply box and keeps the notification.</li>
+<li><b>WhatsApp's icon:</b> Notifications show WhatsApp's own icon, and Settings lists WhatsApp just once.</li>
+<li><b>Safer buttons:</b> Buttons that delete, like "Delete All", never show in the notch.</li>
+</ul>
+<h4>Improvements</h4>
+<ul>
+<li><b>Lighter buttons:</b> "Reply" and the other notification buttons are slim, light pills; the reply field and Send match them.</li>
+</ul>
+<p><i>Your permissions are kept with this update.</i></p>
+]]></description>
+            <pubDate>Fri, 06 Nov 2026 12:09:36 +0300</pubDate>
+            <link>https://github.com/OzdmrYsn/islo</link>
+            <sparkle:version>27</sparkle:version>
+            <sparkle:shortVersionString>2.5.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.2/islo-2.5.2.zip" length="6596336" type="application/octet-stream" sparkle:edSignature="Qf29IZh4/0vOYe3MiFTNpb0EYvQ/K2f5NPcS5lj9MucTaLMsaCvuSbIXJMOQtchVD2TLlvRBbPrh3QzVtLo0Cg=="/>
+        </item>
+        <item>
             <title>2.5.1</title>
             <description><![CDATA[
 <style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
@@ -89,36 +129,6 @@
             <sparkle:shortVersionString>2.5.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.0/islo-2.5.0.zip" length="6506131" type="application/octet-stream" sparkle:edSignature="PAJegTYXd59otd4xD9U/dBLYQJJvyC6cXcXEFr2UBDY1qPLyX70KKU78rlaxmI3EsTkGUpjng4xJYQESZ4ELCw=="/>
-        </item>
-        <item>
-            <title>2.4.1</title>
-            <description><![CDATA[
-<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
-<h3>Türkçe</h3>
-<p>islo. 2.4.1 ile ekran görüntüsü çentikte anında açılır.</p>
-<h4>İyileştirmeler</h4>
-<ul>
-<li><b>Ekran görüntüsü artık bekletmiyor:</b> Önizleme, görüntüyü aldığın anda çentikte açılır. Önceden macOS'un köşedeki küçük önizlemesi kaybolana kadar (yaklaşık 5 saniye) bekliyordu.</li>
-<li><b>Tek önizleme:</b> islo. çalışırken macOS'un köşedeki küçük önizlemesini kapatır; görüntü anında kaydedilir. Sürükle, Kopyala, Rafa ekle, Göster ve Sil çentikte hazır.</li>
-<li><b>Yeni seçenek:</b> Ayarlar › Özellikler › Ekran görüntüsü › "macOS'un küçük önizlemesini kapat". Varsayılan olarak açık; kapatırsan eski davranışa dönersin.</li>
-</ul>
-<p><i>islo. kapalıyken macOS'un önizlemesi geri gelir. İzinlerin bu güncellemede korunur.</i></p>
-<h3>English</h3>
-<p>islo. 2.4.1 opens your screenshot in the notch the moment you take it.</p>
-<h4>Improvements</h4>
-<ul>
-<li><b>Screenshots no longer wait:</b> The preview opens in the notch as soon as you take a screenshot. It used to wait until macOS's corner thumbnail went away (about 5 seconds).</li>
-<li><b>One preview:</b> While islo. runs it turns off macOS's corner thumbnail, so the screenshot is saved at once. Drag, Copy, Shelf, Show and Delete are ready in the notch.</li>
-<li><b>New option:</b> Settings › Features › Screenshots › "Turn off macOS's thumbnail". It's on by default; turn it off to go back to the old behaviour.</li>
-</ul>
-<p><i>macOS's thumbnail comes back while islo. isn't running. Your permissions are kept with this update.</i></p>
-]]></description>
-            <pubDate>Sun, 01 Nov 2026 03:51:53 +0300</pubDate>
-            <link>https://github.com/OzdmrYsn/islo</link>
-            <sparkle:version>24</sparkle:version>
-            <sparkle:shortVersionString>2.4.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.4.1/islo-2.4.1.zip" length="6029193" type="application/octet-stream" sparkle:edSignature="iFyFVQOOOC8A3qf9Fv/CHffhVlrB0E1A+JWsODqRUhirehVnSaxiXP6yp7ePt691yarbwctpzYBWDFQLqLZNDQ=="/>
         </item>
     </channel>
 </rss>
