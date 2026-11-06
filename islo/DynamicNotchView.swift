@@ -3375,41 +3375,45 @@ struct DynamicNotchView: View {
             .frame(height: 28)
         case .typing, .sending:
             HStack(spacing: 7) {
+                let hasText = !replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 TextField(localized("Yanıt yaz…", "Write a reply…"), text: $replyText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12))
+                    .font(.system(size: 11.5))
                     .focused($isReplyFieldFocused)
                     .onSubmit { sendReply() }
                     .onExitCommand(perform: cancelReply)
                     .disabled(replyPhase == .sending)
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background(Capsule().fill(Color.white.opacity(0.1)))
-                    .overlay(Capsule().strokeBorder(accent.opacity(0.7), lineWidth: 1))
+                    .padding(.horizontal, 11)
+                    .frame(height: 25)
+                    .background(Capsule().fill(Color.white.opacity(0.07)))
+                    .overlay(Capsule().strokeBorder(accent.opacity(0.45), lineWidth: 0.75))
                 Button(action: sendReply) {
                     Group {
                         if replyPhase == .sending {
-                            ProgressView().controlSize(.small)
+                            ProgressView().controlSize(.mini)
                         } else {
                             Image(systemName: "paperplane.fill")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(.white)
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .foregroundStyle(hasText ? Color.black.opacity(0.8) : accent)
                         }
                     }
-                    .frame(width: 28, height: 28)
-                    .background(Circle().fill(accent))
+                    .frame(width: 25, height: 25)
+                    .background(Circle().fill(hasText ? accent : accent.opacity(0.14)))
+                    .overlay(Circle().strokeBorder(accent.opacity(hasText ? 0 : 0.35), lineWidth: 0.5))
+                    .animation(.easeOut(duration: 0.15), value: hasText)
                 }
-                .buttonStyle(.plain)
-                .disabled(replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || replyPhase == .sending)
+                .buttonStyle(PillPressStyle())
+                .disabled(!hasText || replyPhase == .sending)
                 .help(localized("Gönder (Return)", "Send (Return)"))
                 Button(action: cancelReply) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.75))
-                        .frame(width: 28, height: 28)
-                        .background(Circle().fill(Color.white.opacity(0.1)))
+                        .font(.system(size: 8.5, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .frame(width: 25, height: 25)
+                        .background(Circle().fill(Color.white.opacity(0.07)))
+                        .overlay(Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PillPressStyle())
                 .help(localized("Vazgeç (Esc)", "Cancel (Esc)"))
             }
         case .done(let message):
@@ -3425,7 +3429,7 @@ struct DynamicNotchView: View {
         case .none:
             HStack(spacing: 6) {
                 if item.replyAction != nil {
-                    notificationButton(localized("Yanıtla", "Reply"), symbol: "arrowshape.turn.up.left.fill", prominent: true) {
+                    notificationButton(localized("Yanıtla", "Reply"), symbol: "arrowshape.turn.up.left", prominent: true) {
                         startReply(item)
                     }
                 }
@@ -3445,22 +3449,7 @@ struct DynamicNotchView: View {
         prominent: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                if let symbol {
-                    Image(systemName: symbol).font(.system(size: 9.5, weight: .bold))
-                }
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 12)
-            .frame(height: 26)
-            .background(Capsule().fill(prominent ? accent : Color.white.opacity(0.12)))
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
+        NotificationPill(title: title, symbol: symbol, tint: prominent ? accent : nil, action: action)
     }
 
     private var isReplyActive: Bool {
@@ -4914,6 +4903,55 @@ private struct BatteryGlyph: View {
             }
         }
         .accessibilityHidden(true)
+    }
+}
+
+/// A light pill for a notification's buttons: the accent's tint and a
+/// hairline for Reply, a quiet glass one for the rest. Brightens a little
+/// under the pointer.
+private struct NotificationPill: View {
+    let title: String
+    let symbol: String?
+    /// The accent for the main button; nil for the others.
+    let tint: Color?
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                if let symbol {
+                    Image(systemName: symbol)
+                        .font(.system(size: 8.5, weight: .semibold))
+                }
+                Text(title)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(tint ?? Color.white.opacity(isHovered ? 0.95 : 0.78))
+            .padding(.horizontal, 10)
+            .frame(height: 23)
+            .background(
+                Capsule().fill((tint ?? .white).opacity(tint == nil ? (isHovered ? 0.12 : 0.07) : (isHovered ? 0.22 : 0.14)))
+            )
+            .overlay(
+                Capsule().strokeBorder((tint ?? .white).opacity(tint == nil ? 0.12 : 0.35), lineWidth: 0.5)
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(PillPressStyle())
+        .onHover { isHovered = $0 }
+        .animation(.easeOut(duration: 0.12), value: isHovered)
+    }
+}
+
+/// Presses in slightly, like the notch's other controls.
+private struct PillPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
     }
 }
 

@@ -543,6 +543,12 @@ final class AppSettings: ObservableObject {
     /// Apps that have sent a notification, newest first, for Settings.
     @Published private(set) var knownNotificationApps: [String]
 
+    /// App names as macOS shows them, without direction marks, each once.
+    private static func cleanedNames(_ names: [String]) -> [String] {
+        var seen: Set<String> = []
+        return names.map(\.withoutDirectionMarks).filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
     func noteNotificationApp(_ name: String) {
         guard !knownNotificationApps.contains(name) else { return }
         knownNotificationApps = Array(([name] + knownNotificationApps).prefix(40))
@@ -717,9 +723,9 @@ final class AppSettings: ObservableObject {
         notificationPreviewStyle = NotificationPreviewStyle(
             rawValue: defaults.string(forKey: Key.notificationPreviewStyle) ?? ""
         ) ?? .content
-        mutedNotificationApps = defaults.stringArray(forKey: Key.mutedNotificationApps) ?? []
+        mutedNotificationApps = Self.cleanedNames(defaults.stringArray(forKey: Key.mutedNotificationApps) ?? [])
         vipNames = defaults.stringArray(forKey: Key.vipNames) ?? []
-        knownNotificationApps = defaults.stringArray(forKey: Key.knownNotificationApps) ?? []
+        knownNotificationApps = Self.cleanedNames(defaults.stringArray(forKey: Key.knownNotificationApps) ?? [])
         notificationAutoClear = AutoClearInterval(
             rawValue: defaults.string(forKey: Key.notificationAutoClear) ?? ""
         ) ?? .never
