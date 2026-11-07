@@ -572,7 +572,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc
     private func showSettingsFromNotification(_ notification: Notification) {
         let destination = (notification.userInfo?["destination"] as? String).flatMap(SettingsDestination.init(rawValue:))
-        presentSettings(destination: destination)
+        presentSettings(destination: destination, feature: notification.userInfo?["feature"] as? String)
     }
 
     @objc

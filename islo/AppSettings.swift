@@ -165,24 +165,6 @@ enum NotchActivationMode: String, CaseIterable, Identifiable {
     }
 }
 
-enum HomeWidgetStyle: String, CaseIterable, Identifiable {
-    case balanced
-    case media
-    case focus
-    case day
-
-    var id: String { rawValue }
-
-    func title(language: AppLanguage) -> String {
-        switch self {
-        case .balanced: language.value(turkish: "Dengeli", english: "Balanced")
-        case .media: language.value(turkish: "Müzik", english: "Music")
-        case .focus: language.value(turkish: "Odak", english: "Focus")
-        case .day: language.value(turkish: "Günüm", english: "My Day")
-        }
-    }
-}
-
 /// The theme colour used across the notch and islo.'s windows.
 enum AccentTheme: String, CaseIterable, Identifiable {
     case blue
@@ -347,7 +329,8 @@ final class AppSettings: ObservableObject {
         static let knownNotificationApps = "dashboard.notifications.knownApps"
         static let shelfAutoClear = "dashboard.fileShelf.autoClear"
         static let clipboardAutoClear = "dashboard.clipboard.autoClear"
-        static let homeWidgetStyle = "dashboard.homeWidgetStyle"
+        /// No longer used: Home has one layout.
+        static let legacyHomeWidgetStyle = "dashboard.homeWidgetStyle"
         static let legacySceneStyle = "appearance.notchSceneStyle"
         static let accentTheme = "appearance.accentTheme"
         static let surfaceTone = "appearance.surfaceTone"
@@ -591,10 +574,6 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(hideSystemNotificationBanners, forKey: Key.hideSystemNotificationBanners) }
     }
 
-    @Published var homeWidgetStyle: HomeWidgetStyle {
-        didSet { defaults.set(homeWidgetStyle.rawValue, forKey: Key.homeWidgetStyle) }
-    }
-
     @Published var accentTheme: AccentTheme {
         didSet { defaults.set(accentTheme.rawValue, forKey: Key.accentTheme) }
     }
@@ -740,9 +719,7 @@ final class AppSettings: ObservableObject {
             defaults: defaults,
             fallback: true
         )
-        homeWidgetStyle = HomeWidgetStyle(
-            rawValue: defaults.string(forKey: Key.homeWidgetStyle) ?? ""
-        ) ?? .balanced
+        defaults.removeObject(forKey: Key.legacyHomeWidgetStyle)
         // The colour + tone theme replaces the old fixed scenes; carry an
         // existing scene over to its closest colour and tone.
         let legacyScene: (AccentTheme, SurfaceTone)? = switch defaults.string(

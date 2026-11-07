@@ -2,43 +2,25 @@ import Carbon.HIToolbox
 import Combine
 import SwiftUI
 
+/// Pages other parts of islo. can open Settings on. `features` opens the
+/// first feature's page.
 enum SettingsDestination: String, CaseIterable, Identifiable {
     case general, appearance, features, permissions, about
     var id: String { rawValue }
-
-    func title(_ language: AppLanguage) -> String {
-        switch self {
-        case .general: language.value(turkish: "Genel", english: "General")
-        case .appearance: language.value(turkish: "Görünüm", english: "Appearance")
-        case .features: language.value(turkish: "Özellikler", english: "Features")
-        case .permissions: language.value(turkish: "İzinler", english: "Permissions")
-        case .about: language.value(turkish: "Hakkında", english: "About")
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .general: "gearshape.fill"
-        case .appearance: "paintpalette.fill"
-        case .features: "square.grid.2x2.fill"
-        case .permissions: "lock.shield.fill"
-        case .about: "info.circle.fill"
-        }
-    }
 }
 
 /// Lets the menu bar and launch reminders open Settings on a given page.
 final class SettingsRouter: ObservableObject {
     @Published var requestedDestination: SettingsDestination?
-    /// A feature's detail page to open, by its identifier (e.g. "timer").
+    /// A feature's page to open, by its identifier (e.g. "timer").
     @Published var requestedFeature: String?
     @Published var isWindowVisible = false
 }
 
 // MARK: - islo. look
 
-/// The look islo.'s windows share with the notch and the website: near
-/// black, white text at a few strengths, soft glass cards.
+/// The look islo.'s dark windows share with the notch and the website:
+/// near black, white text at a few strengths, soft glass cards.
 enum IsloStyle {
     static let background = Color(red: 0.035, green: 0.035, blue: 0.045)
     static let text = Color(red: 0.96, green: 0.96, blue: 0.97)
@@ -54,6 +36,53 @@ enum IsloStyle {
             endPoint: .bottomTrailing
         )
     }
+}
+
+/// The colours shared controls use: the dark islo. look (welcome guide)
+/// or the light one (Settings).
+struct IsloPalette {
+    let text: Color
+    let muted: Color
+    let faint: Color
+    let line: Color
+    /// Behind quiet controls: chips, buttons, fields.
+    let fill: Color
+    let fillPressed: Color
+    let card: Color
+    let page: Color
+    let sidebar: Color
+    let good: Color
+    let warning: Color
+
+    static let dark = IsloPalette(
+        text: IsloStyle.text,
+        muted: IsloStyle.muted,
+        faint: IsloStyle.faint,
+        line: IsloStyle.line,
+        fill: Color.white.opacity(0.08),
+        fillPressed: Color.white.opacity(0.16),
+        card: Color.white.opacity(0.05),
+        page: IsloStyle.background,
+        sidebar: Color.black.opacity(0.32),
+        good: .green,
+        warning: .orange
+    )
+
+    static let light = IsloPalette(
+        text: Color(hex: 0x1D1D1F),
+        muted: Color(hex: 0x6E6E73),
+        faint: Color(hex: 0xA1A1A6),
+        line: Color.black.opacity(0.075),
+        fill: Color.black.opacity(0.05),
+        fillPressed: Color.black.opacity(0.1),
+        card: .white,
+        page: Color(hex: 0xF5F5F7),
+        sidebar: Color(hex: 0xEBEBEE),
+        good: Color(hex: 0x248A3D),
+        warning: Color(hex: 0xC4560A)
+    )
+
+    static func of(_ scheme: ColorScheme) -> IsloPalette { scheme == .dark ? .dark : .light }
 }
 
 /// Black with the theme colour glowing in at the chosen tone, like the
@@ -119,44 +148,68 @@ struct IconTile: View {
     let colors: [Color]
     var size: CGFloat = 30
     var isOn = true
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: size * 0.3, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+        let offColors = scheme == .dark
+            ? [Color.white.opacity(0.15), Color.white.opacity(0.07)]
+            : [Color(hex: 0xCACACF), Color(hex: 0xADADB3)]
         shape
             .fill(LinearGradient(
-                colors: isOn ? colors : [Color.white.opacity(0.15), Color.white.opacity(0.07)],
+                colors: isOn ? colors : offColors,
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ))
             .overlay(
                 Image(systemName: symbol)
                     .font(.system(size: size * 0.45, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(isOn ? 1 : 0.5))
+                    .foregroundStyle(Color.white.opacity(isOn || scheme == .light ? 1 : 0.5))
             )
             .overlay(shape.strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5))
             .frame(width: size, height: size)
-            .shadow(color: (isOn ? colors.last ?? .clear : .clear).opacity(0.35), radius: size * 0.22, y: size * 0.08)
+            .shadow(
+                color: (isOn ? colors.last ?? .clear : .clear).opacity(scheme == .dark ? 0.35 : 0.22),
+                radius: size * (scheme == .dark ? 0.22 : 0.12),
+                y: size * 0.06
+            )
             .accessibilityHidden(true)
     }
 }
 
-/// Capsule buttons: filled with the theme colour, or a quiet glass one.
+/// Capsule buttons: filled with the theme colour, or a quiet one.
 struct IsloButtonStyle: ButtonStyle {
     var prominent = false
     var accent: Color
+    /// Text on the theme colour; dark for the light colours.
+    var onAccent: Color = .white
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(prominent ? Color.white : IsloStyle.text)
-            .padding(.horizontal, 13)
-            .frame(height: 28)
-            .background(
-                Capsule().fill(prominent ? accent : Color.white.opacity(configuration.isPressed ? 0.16 : 0.09))
-            )
-            .overlay(Capsule().strokeBorder(Color.white.opacity(prominent ? 0.18 : 0.08), lineWidth: 0.5))
-            .opacity(configuration.isPressed && prominent ? 0.85 : 1)
-            .contentShape(Capsule())
+        StyledLabel(configuration: configuration, prominent: prominent, accent: accent, onAccent: onAccent)
+    }
+
+    private struct StyledLabel: View {
+        let configuration: Configuration
+        let prominent: Bool
+        let accent: Color
+        let onAccent: Color
+        @Environment(\.colorScheme) private var scheme
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            let palette = IsloPalette.of(scheme)
+            configuration.label
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(prominent ? onAccent : palette.text)
+                .padding(.horizontal, 13)
+                .frame(height: 28)
+                .background(
+                    Capsule().fill(prominent ? accent : (configuration.isPressed ? palette.fillPressed : palette.fill))
+                )
+                .overlay(Capsule().strokeBorder(prominent ? Color.white.opacity(0.18) : palette.line, lineWidth: 0.5))
+                .opacity(configuration.isPressed && prominent ? 0.85 : isEnabled ? 1 : 0.5)
+                .contentShape(Capsule())
+        }
     }
 }
 
@@ -166,8 +219,11 @@ struct ChipPicker<Value: Hashable>: View {
     let options: [(value: Value, title: String)]
     let accent: Color
     var fillsWidth = false
+    var onAccent: Color = .white
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
+        let palette = IsloPalette.of(scheme)
         HStack(spacing: 3) {
             ForEach(options, id: \.value) { option in
                 let isSelected = option.value == selection
@@ -177,14 +233,14 @@ struct ChipPicker<Value: Hashable>: View {
                     Text(option.title)
                         .font(.system(size: 12, weight: .semibold))
                         .lineLimit(1)
-                        .foregroundStyle(isSelected ? Color.white : IsloStyle.text.opacity(0.72))
+                        .foregroundStyle(isSelected ? onAccent : palette.text.opacity(0.72))
                         .padding(.horizontal, 12)
                         .frame(maxWidth: fillsWidth ? .infinity : nil)
                         .frame(height: 26)
                         .background {
                             if isSelected {
                                 Capsule().fill(accent)
-                                    .shadow(color: accent.opacity(0.4), radius: 6, y: 2)
+                                    .shadow(color: accent.opacity(scheme == .dark ? 0.4 : 0.25), radius: 6, y: 2)
                             }
                         }
                         .contentShape(Capsule())
@@ -194,8 +250,8 @@ struct ChipPicker<Value: Hashable>: View {
             }
         }
         .padding(3)
-        .background(Capsule().fill(Color.white.opacity(0.06)))
-        .overlay(Capsule().strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5))
+        .background(Capsule().fill(palette.fill))
+        .overlay(Capsule().strokeBorder(palette.line, lineWidth: 0.5))
         .fixedSize(horizontal: !fillsWidth, vertical: true)
     }
 }
@@ -209,9 +265,8 @@ private enum Feature: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// Things the notch tells you about on its own (after notifications,
-    /// which lead the page as a wide tile).
-    static let alerts: [Feature] = [.commandEcho, .calendar, .devices, .privacy, .screenshots, .downloads]
+    /// Things the notch tells you about on its own.
+    static let alerts: [Feature] = [.notifications, .commandEcho, .calendar, .devices, .privacy, .screenshots, .downloads]
     /// Tools that live in the open notch.
     static let panel: [Feature] = [.timer, .shelf, .shortcuts, .keepAwake, .weather, .lyrics]
 
@@ -259,6 +314,22 @@ private enum FeaturePermission {
     case folder(ProtectedFolder)
 }
 
+/// A page of the Settings window: one per sidebar row.
+private enum SettingsPage: Hashable {
+    case general, appearance, permissions, about
+    case feature(Feature)
+
+    init(_ destination: SettingsDestination) {
+        switch destination {
+        case .general: self = .general
+        case .appearance: self = .appearance
+        case .features: self = .feature(.notifications)
+        case .permissions: self = .permissions
+        case .about: self = .about
+        }
+    }
+}
+
 // MARK: - Settings
 
 struct SettingsView: View {
@@ -268,49 +339,48 @@ struct SettingsView: View {
     @ObservedObject private var shortcutsManager = ShortcutsManager.shared
     var router: SettingsRouter?
     var onShowOnboarding: () -> Void = {}
-    @State private var selection: SettingsDestination = .general
-    @State private var openFeature: Feature?
+    @State private var selection: SettingsPage = .general
     @State private var weatherQuery = ""
     @State private var vipDraft = ""
     @State private var weatherResults: [WeatherLocation] = []
     @State private var isSearchingWeather = false
+    @State private var showsNotificationHelp = false
+    @State private var confirmsReset = false
+
+    /// Settings is always light; the notch and the welcome guide stay dark.
+    private let p = IsloPalette.light
 
     var body: some View {
         HStack(spacing: 0) {
-            sidebar.frame(width: 214)
-            Rectangle().fill(IsloStyle.line).frame(width: 1)
+            sidebar.frame(width: 236)
+            Rectangle().fill(p.line).frame(width: 1)
             ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    if selection == .features, let feature = openFeature {
-                        featureDetail(feature)
-                            .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .opacity))
-                    } else {
-                        pageHeader
-                        selectedPage
-                    }
+                VStack(alignment: .leading, spacing: 20) {
+                    currentPage
                 }
-                .padding(.horizontal, 32)
-                .padding(.top, 44)
-                .padding(.bottom, 32)
+                .padding(.horizontal, 34)
+                .padding(.top, 40)
+                .padding(.bottom, 30)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollIndicators(.never)
+            // Each page starts at the top.
+            .id(selection)
         }
-        .foregroundStyle(IsloStyle.text)
+        .foregroundStyle(p.text)
         .frame(minWidth: 940, maxWidth: .infinity, minHeight: 690, maxHeight: .infinity)
-        .background(IsloWindowBackground(accent: accent, tone: settings.surfaceTone))
+        .background(p.page)
         .ignoresSafeArea()
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(.light)
         .tint(accent)
         .onReceive(router?.$requestedDestination.eraseToAnyPublisher() ?? Empty().eraseToAnyPublisher()) { destination in
             guard let destination else { return }
-            select(destination)
+            selection = SettingsPage(destination)
             router?.requestedDestination = nil
         }
         .onReceive(router?.$requestedFeature.eraseToAnyPublisher() ?? Empty().eraseToAnyPublisher()) { identifier in
             guard let identifier, let feature = Feature(rawValue: identifier) else { return }
-            selection = .features
-            openFeature = feature
+            selection = .feature(feature)
             router?.requestedFeature = nil
         }
         // macOS doesn't announce permission changes; re-read them while
@@ -322,12 +392,27 @@ struct SettingsView: View {
             guard router?.isWindowVisible ?? true else { return }
             settings.refreshPermissionState()
         }
+        .alert(text("Varsayılanlara dönülsün mü?", "Restore defaults?"), isPresented: $confirmsReset) {
+            Button(text("Vazgeç", "Cancel"), role: .cancel) {}
+            Button(text("Varsayılanlara dön", "Restore"), role: .destructive) {
+                settings.resetInteractionDefaults()
+                settings.resetDashboardFeatureDefaults()
+            }
+        } message: {
+            Text(text(
+                "Özellikler, bildirim kuralları ve çentiğin davranışı ilk hâline döner. Dil, renk ve kısayol tuşu değişmez.",
+                "Features, notification rules and how the notch behaves go back to how they started. Language, colour and the keyboard shortcut stay."
+            ))
+        }
     }
 
-    private func select(_ destination: SettingsDestination) {
-        withAnimation(.easeInOut(duration: 0.18)) {
-            selection = destination
-            openFeature = nil
+    @ViewBuilder private var currentPage: some View {
+        switch selection {
+        case .general: generalPage
+        case .appearance: appearancePage
+        case .permissions: permissionsPage
+        case .about: aboutPage
+        case .feature(let feature): featurePage(feature)
         }
     }
 
@@ -335,64 +420,69 @@ struct SettingsView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 11) {
+            HStack(spacing: 10) {
                 Image(nsImage: NSApp.applicationIconImage)
-                    .resizable().scaledToFit().frame(width: 38, height: 38)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .shadow(color: accent.opacity(0.35), radius: 10, y: 3)
+                    .resizable().scaledToFit().frame(width: 32, height: 32)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("islo.").font(.system(size: 21, weight: .bold, design: .rounded))
-                    Text(text("Ayarlar", "Settings")).font(.system(size: 11.5, weight: .medium)).foregroundStyle(IsloStyle.muted)
+                    Text("islo.").font(.system(size: 17, weight: .bold, design: .rounded))
+                    Text(text("Ayarlar", "Settings")).font(.system(size: 11, weight: .medium)).foregroundStyle(p.muted)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 50)
-            .padding(.bottom, 22)
+            .padding(.horizontal, 18)
+            .padding(.top, 46)
+            .padding(.bottom, 14)
 
-            VStack(spacing: 3) {
-                ForEach(SettingsDestination.allCases) { destination in
-                    sidebarItem(destination)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    sidebarItem(.general)
+                    sidebarItem(.appearance)
+                    sidebarItem(.permissions)
+                    sidebarHeader(text("Çentik haber verir", "The notch tells you"))
+                    ForEach(Feature.alerts) { sidebarItem(.feature($0)) }
+                    sidebarHeader(text("Açılan çentikte", "In the open notch"))
+                    ForEach(Feature.panel) { sidebarItem(.feature($0)) }
+                    Rectangle().fill(p.line).frame(height: 1).padding(.horizontal, 8).padding(.vertical, 8)
+                    sidebarItem(.about)
                 }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 14)
             }
-            .padding(.horizontal, 10)
-
-            Spacer()
-            Text(versionText)
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(IsloStyle.faint)
-                .padding(20)
+            .scrollIndicators(.never)
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Color.black.opacity(0.32))
+        .background(p.sidebar)
     }
 
-    private func sidebarItem(_ destination: SettingsDestination) -> some View {
-        let isSelected = selection == destination
-        return Button { select(destination) } label: {
-            HStack(spacing: 10) {
-                IconTile(symbol: destination.symbol, colors: sidebarColors(destination), size: 24)
-                Text(destination.title(settings.language))
-                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-                    .foregroundStyle(isSelected ? IsloStyle.text : IsloStyle.text.opacity(0.78))
+    private func sidebarHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(p.faint)
+            .padding(.leading, 9)
+            .padding(.top, 14)
+            .padding(.bottom, 4)
+    }
+
+    private func sidebarItem(_ page: SettingsPage) -> some View {
+        let isSelected = selection == page
+        return Button { selection = page } label: {
+            HStack(spacing: 9) {
+                IconTile(symbol: symbol(page), colors: colors(page), size: 22, isOn: isLit(page))
+                Text(title(page))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(isSelected ? onAccent : p.text)
+                    .lineLimit(1)
                 Spacer(minLength: 0)
-                if destination == .permissions, settings.missingPermissionCount > 0 {
-                    Text("\(settings.missingPermissionCount)")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .frame(minWidth: 18, minHeight: 18)
-                        .background(Capsule().fill(Color.orange))
-                        .help(text("Eksik izin var", "A permission is missing"))
-                }
+                sidebarBadge(page, isSelected: isSelected)
             }
-            .padding(.horizontal, 9)
-            .frame(height: 36)
+            .padding(.horizontal, 7)
+            .frame(height: 30)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? Color.white.opacity(0.1) : .clear)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isSelected ? accent : .clear)
             )
             // A clear background isn't hit-testable; make the whole row
             // clickable, not just its text.
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
         // The focus ring on the first row read as a second selection.
@@ -400,65 +490,81 @@ struct SettingsView: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private func sidebarColors(_ destination: SettingsDestination) -> [Color] {
-        switch destination {
+    @ViewBuilder
+    private func sidebarBadge(_ page: SettingsPage, isSelected: Bool) -> some View {
+        switch page {
+        case .permissions where settings.missingPermissionCount > 0:
+            Text("\(settings.missingPermissionCount)")
+                .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(minWidth: 17, minHeight: 17)
+                .background(Capsule().fill(Color.orange))
+                .help(text("Eksik izin var", "A permission is missing"))
+        case .feature(let feature) where needsPermission(feature):
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(isSelected ? onAccent : Color.orange)
+                .help(text("İzin gerekli", "Needs permission"))
+        default:
+            EmptyView()
+        }
+    }
+
+    private func title(_ page: SettingsPage) -> String {
+        switch page {
+        case .general: text("Genel", "General")
+        case .appearance: text("Görünüm", "Appearance")
+        case .permissions: text("İzinler", "Permissions")
+        case .about: text("Hakkında", "About")
+        case .feature(let feature): title(feature)
+        }
+    }
+
+    private func symbol(_ page: SettingsPage) -> String {
+        switch page {
+        case .general: "gearshape.fill"
+        case .appearance: "paintpalette.fill"
+        case .permissions: "lock.shield.fill"
+        case .about: "info.circle.fill"
+        case .feature(let feature): feature.symbol
+        }
+    }
+
+    private func colors(_ page: SettingsPage) -> [Color] {
+        switch page {
         case .general: Tint.gray
         case .appearance: Tint.sunset
-        case .features: Tint.blue
         case .permissions: settings.missingPermissionCount > 0 ? Tint.orange : Tint.green
         case .about: Tint.indigo
+        case .feature(let feature): feature.colors
         }
     }
 
-    // MARK: Page frame
-
-    private var pageHeader: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(selection.title(settings.language))
-                .font(.system(size: 30, weight: .bold, design: .rounded))
-                .tracking(-0.4)
-            Text(pageSubtitle).font(.system(size: 13.5)).foregroundStyle(IsloStyle.muted)
-        }
-        .padding(.bottom, 2)
-    }
-
-    private var pageSubtitle: String {
-        switch selection {
-        case .general: text("Dil, açılış ve çentiğin nasıl davranacağı.", "Language, startup and how the notch behaves.")
-        case .appearance: text("Çentiği kendi rengine boya.", "Paint the notch in your own colour.")
-        case .features: text("Bir özelliği açıp kapatmak için anahtarı, ayrıntıları için kutucuğu kullan.", "Use the switch to turn a feature on or off, and the tile for its details.")
-        case .permissions: text("islo.'nun macOS'tan istediği izinler ve durumları.", "The macOS permissions islo. uses and their status.")
-        case .about: text("Sürüm, güncellemeler ve bağlantılar.", "Version, updates and links.")
-        }
-    }
-
-    @ViewBuilder private var selectedPage: some View {
-        switch selection {
-        case .general: generalPage
-        case .appearance: appearancePage
-        case .features: featuresPage
-        case .permissions: permissionsPage
-        case .about: aboutPage
-        }
+    /// A feature that's switched off shows a grey tile.
+    private func isLit(_ page: SettingsPage) -> Bool {
+        if case .feature(let feature) = page { return isEnabled(feature).wrappedValue }
+        return true
     }
 
     // MARK: General
 
     private var generalPage: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 20) {
+            pageTitle(text("Genel", "General"))
+
             if settings.missingPermissionCount > 0 {
                 noticeCard(
                     message: text("Bazı izinler eksik, bu yüzden bazı özellikler çalışmıyor.", "Some permissions are missing, so some features don't work."),
                     buttonTitle: text("İzinlere git", "Go to Permissions")
-                ) { select(.permissions) }
+                ) { selection = .permissions }
             }
 
-            section(text("Temel", "Basics")) {
-                row(symbol: "globe", colors: Tint.blue, title: text("Dil", "Language"), subtitle: text("Uygulamanın dili.", "The app's language.")) {
-                    ChipPicker(selection: $settings.language, options: AppLanguage.allCases.map { ($0, $0.title) }, accent: accent)
+            group {
+                row(text("Dil", "Language")) {
+                    ChipPicker(selection: $settings.language, options: AppLanguage.allCases.map { ($0, $0.title) }, accent: accent, onAccent: onAccent)
                 }
                 divider
-                row(symbol: "power", colors: Tint.green, title: text("Mac açılınca başlat", "Launch at login"), subtitle: text("islo. oturum açtığın anda hazır olur.", "islo. is ready as soon as you log in.")) {
+                row(text("Mac açılınca başlat", "Launch at login")) {
                     switchControl(launchAtLoginBinding)
                 }
                 if settings.launchAtLoginRequiresApproval {
@@ -468,53 +574,63 @@ struct SettingsView: View {
                 }
             }
 
-            section(text("Çentik", "Notch")) {
-                stackedRow(symbol: "cursorarrow.rays", colors: Tint.indigo, title: text("Açılma", "Opening"), subtitle: settings.activationMode.subtitle(language: settings.language)) {
-                    ChipPicker(selection: $settings.activationMode, options: NotchActivationMode.allCases.map { ($0, $0.title(language: settings.language)) }, accent: accent, fillsWidth: true)
+            group(text("Çentik", "Notch")) {
+                stackedRow(text("Açılma", "Opens"), subtitle: settings.activationMode.subtitle(language: settings.language)) {
+                    ChipPicker(selection: $settings.activationMode, options: NotchActivationMode.allCases.map { ($0, $0.title(language: settings.language)) }, accent: accent, fillsWidth: true, onAccent: onAccent)
                 }
                 divider
-                row(symbol: "music.note", colors: Tint.pink, title: text("Şarkı değişince göster", "Show when the song changes"), subtitle: text("Yeni şarkı birkaç saniye çentikte görünür.", "The new song shows in the notch for a few seconds.")) {
+                row(text("Şarkı değişince göster", "Show when the song changes")) {
                     switchControl($settings.showOnTrackChange)
                 }
                 if settings.showOnTrackChange {
                     divider
-                    sliderRow(symbol: "clock.fill", colors: Tint.pink, title: text("Gösterim süresi", "How long"), value: $settings.trackChangeDisplayDuration, range: 2...8, step: 0.5, valueText: String(format: text("%.1f sn", "%.1f s"), settings.trackChangeDisplayDuration))
+                    sliderRow(text("Gösterim süresi", "How long"), value: $settings.trackChangeDisplayDuration, range: 2...8, step: 0.5, valueText: String(format: text("%.1f sn", "%.1f s"), settings.trackChangeDisplayDuration))
                 }
                 divider
-                row(symbol: "arrow.up.left.and.arrow.down.right", colors: Tint.gray, title: text("Tam ekranda gizle", "Hide in full screen"), subtitle: text("Oyun, film ve sunumların üstünde görünmez.", "Stays out of games, films and presentations.")) {
+                row(text("Tam ekranda gizle", "Hide in full screen"), subtitle: text("Oyun, film ve sunumların üstünde görünmez.", "Stays out of games, films and presentations.")) {
                     switchControl($settings.hideInFullScreen)
                 }
                 divider
-                sliderRow(symbol: "arrow.down.right.and.arrow.up.left", colors: Tint.orange, title: text("Kapanma gecikmesi", "Collapse delay"), value: $settings.collapseDelay, range: 0.15...1.2, step: 0.05, valueText: String(format: text("%.2f sn", "%.2f s"), settings.collapseDelay))
+                sliderRow(text("Kapanma gecikmesi", "Collapse delay"), value: $settings.collapseDelay, range: 0.15...1.2, step: 0.05, valueText: String(format: text("%.2f sn", "%.2f s"), settings.collapseDelay))
             }
 
-            section(text("Kısayol tuşu", "Keyboard shortcut")) {
-                row(symbol: "command", colors: Tint.gray, title: text("Kısayolla aç ve kapat", "Open and close with a shortcut"), subtitle: text("Hangi uygulamada olursan ol, bu tuşlar çentiği açar; tekrar basınca kapanır.", "In any app, these keys open the notch; press again to close it.")) {
-                    switchControl($settings.hotKeyEnabled)
-                }
-                if settings.hotKeyEnabled {
-                    divider
-                    row(symbol: "keyboard.fill", colors: Tint.gray, title: text("Tuşlar", "Keys"), subtitle: settings.isHotKeyTaken
-                        ? text("Bu kısayolu başka bir uygulama kullanıyor; başka bir tane seç.", "Another app uses this shortcut; pick a different one.")
-                        : text("Tıkla ve yeni tuşlara bas: ⌘ ya da ⌃ ile, veya ⌥ ile Boşluk, ok ya da F tuşu. Esc vazgeçer.", "Click, then press the new keys: with ⌘ or ⌃, or ⌥ with Space, an arrow or an F-key. Esc cancels.")) {
-                        HStack(spacing: 8) {
-                            if settings.isHotKeyTaken {
-                                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                            }
-                            if settings.toggleHotKey != .defaultToggle {
-                                Button(text("Varsayılan", "Default")) { settings.toggleHotKey = .defaultToggle }
-                                    .buttonStyle(IsloButtonStyle(accent: accent))
-                            }
-                            ShortcutRecorder(hotKey: $settings.toggleHotKey, language: settings.language, accent: accent)
-                        }
-                    }
-                }
-            }
+            hotKeyGroup
 
             HStack {
                 Spacer()
-                Button(text("Varsayılanlara dön", "Restore defaults")) { settings.resetInteractionDefaults() }
-                    .buttonStyle(IsloButtonStyle(accent: accent))
+                Button(text("Varsayılanlara dön…", "Restore defaults…")) { confirmsReset = true }
+                    .buttonStyle(quietButton)
+            }
+        }
+    }
+
+    private var hotKeyGroup: some View {
+        group(
+            text("Kısayol tuşu", "Keyboard shortcut"),
+            footer: settings.hotKeyEnabled
+                ? text("Tuşlara tıkla ve yeni kısayola bas: ⌘ ya da ⌃ ile, veya ⌥ ile Boşluk, ok ya da F tuşu. Esc vazgeçer.", "Click the keys, then press the new shortcut: with ⌘ or ⌃, or ⌥ with Space, an arrow or an F-key. Esc cancels.")
+                : nil
+        ) {
+            row(text("Kısayolla aç ve kapat", "Open and close with a shortcut"), subtitle: text("Hangi uygulamada olursan ol çentiği açar.", "Opens the notch from any app.")) {
+                switchControl($settings.hotKeyEnabled)
+            }
+            if settings.hotKeyEnabled {
+                divider
+                row(
+                    text("Tuşlar", "Keys"),
+                    subtitle: settings.isHotKeyTaken ? text("Bunu başka bir uygulama kullanıyor; başka bir tane seç.", "Another app uses this one; pick a different one.") : nil
+                ) {
+                    HStack(spacing: 8) {
+                        if settings.isHotKeyTaken {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        }
+                        if settings.toggleHotKey != .defaultToggle {
+                            Button(text("Varsayılan", "Default")) { settings.toggleHotKey = .defaultToggle }
+                                .buttonStyle(quietButton)
+                        }
+                        ShortcutRecorder(hotKey: $settings.toggleHotKey, language: settings.language, accent: accent)
+                    }
+                }
             }
         }
     }
@@ -522,204 +638,81 @@ struct SettingsView: View {
     // MARK: Appearance
 
     private var appearancePage: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 20) {
+            pageTitle(text("Görünüm", "Appearance"))
             notchPreview
 
-            section(text("Renk", "Colour")) {
-                stackedRow(symbol: "paintpalette.fill", colors: [accent, accent.opacity(0.65)], title: settings.accentTheme.title(language: settings.language), subtitle: text("Çentikteki simgeler, ilerleme halkası, müzik dalgası ve bu pencere bu rengi kullanır.", "Used by the notch's icons, progress ring, music wave and this window.")) {
+            group(text("Renk", "Colour")) {
+                row(settings.accentTheme.title(language: settings.language)) {
                     AccentSwatchPicker(selection: $settings.accentTheme, language: settings.language)
                 }
             }
 
-            section(text("Ton", "Tone")) {
-                stackedRow(symbol: "drop.halffull", colors: [accent, accent.opacity(0.65)], title: settings.surfaceTone.title(language: settings.language), subtitle: text("Rengin açılan çentiğe ve islo. pencerelerine ne kadar sineceği. Kamera çentiğinin yanı her zaman siyah kalır.", "How much the colour tints the open notch and islo.'s windows. Beside the camera it always stays black.")) {
-                    SurfaceTonePicker(selection: $settings.surfaceTone, accent: accent, language: settings.language)
-                }
-            }
-
-            section(text("Ana sayfa", "Home")) {
-                stackedRow(symbol: "rectangle.grid.2x2.fill", colors: Tint.blue, title: text("Öne çıkan", "In front"), subtitle: text("Açılan çentiğin ana sayfasında hangi bilgi öne çıksın?", "What should lead on the open notch's Home?")) {
-                    ChipPicker(selection: $settings.homeWidgetStyle, options: HomeWidgetStyle.allCases.map { ($0, $0.title(language: settings.language)) }, accent: accent, fillsWidth: true)
-                }
+            group(
+                text("Ton", "Tone"),
+                footer: text("Rengin açılan çentiğe ne kadar sineceği. Kamera çentiğinin yanı her zaman siyah kalır.", "How much the colour tints the open notch. Beside the camera it always stays black.")
+            ) {
+                SurfaceTonePicker(selection: $settings.surfaceTone, accent: accent, language: settings.language)
+                    .padding(.vertical, 14)
             }
         }
     }
 
     private var notchPreview: some View {
-        ZStack(alignment: .top) {
-            LinearGradient(colors: [accent.opacity(0.22), Color.white.opacity(0.02)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return ZStack(alignment: .top) {
+            LinearGradient(colors: [accent.opacity(0.16), accent.opacity(0.03)], startPoint: .top, endPoint: .bottom)
             ThemePreviewNotch(accent: accent, tone: settings.surfaceTone, language: settings.language)
             VStack {
                 Spacer()
                 Text(text("Değişiklikler çentikte anında görünür.", "Changes show in the notch right away."))
                     .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(IsloStyle.muted)
+                    .foregroundStyle(p.muted)
                     .padding(.bottom, 12)
             }
         }
-        .frame(height: 170)
-        .clipShape(RoundedRectangle(cornerRadius: IsloStyle.cardRadius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: IsloStyle.cardRadius, style: .continuous).strokeBorder(IsloStyle.line, lineWidth: 1))
+        .frame(height: 160)
+        .background(p.card)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(p.line, lineWidth: 1))
     }
 
-    // MARK: Features
+    // MARK: Feature pages
 
-    private var featuresPage: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            featureGroup(text("Çentik haber verir", "The notch tells you"), Feature.alerts, leading: .notifications)
-            featureGroup(text("Açılan çentikte", "In the open notch"), Feature.panel)
-            HStack {
-                Spacer()
-                Button(text("Varsayılanlara dön", "Restore defaults")) { settings.resetDashboardFeatureDefaults() }
-                    .buttonStyle(IsloButtonStyle(accent: accent))
-            }
-        }
-        .onAppear { if shortcutsManager.available.isEmpty { shortcutsManager.reload() } }
-    }
-
-    private func featureGroup(_ title: String, _ features: [Feature], leading: Feature? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionLabel(title)
-            if let leading { featureTile(leading, isWide: true) }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 12) {
-                ForEach(features) { featureTile($0) }
-            }
-        }
-    }
-
-    private func featureTile(_ feature: Feature, isWide: Bool = false) -> some View {
-        let isOn = isEnabled(feature).wrappedValue
-        return ZStack(alignment: isWide ? .trailing : .topTrailing) {
-            Button {
-                withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) { openFeature = feature }
-            } label: {
-                Group {
-                    if isWide {
-                        HStack(spacing: 16) {
-                            IconTile(symbol: feature.symbol, colors: feature.colors, size: 48, isOn: isOn)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(title(feature)).font(.system(size: 15, weight: .semibold))
-                                Text(summary(feature))
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(IsloStyle.muted)
-                                    .lineLimit(1)
-                                tileStatus(feature, isOn: isOn)
-                                    .padding(.top, 2)
-                            }
-                            Spacer(minLength: 70)
-                        }
-                        .padding(16)
-                    } else {
-                        VStack(alignment: .leading, spacing: 11) {
-                            IconTile(symbol: feature.symbol, colors: feature.colors, size: 36, isOn: isOn)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(title(feature))
-                                    .font(.system(size: 13.5, weight: .semibold))
-                                    .lineLimit(1)
-                                Text(summary(feature))
-                                    .font(.system(size: 11.5))
-                                    .foregroundStyle(IsloStyle.muted)
-                                    .lineLimit(2, reservesSpace: true)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            HStack(spacing: 5) {
-                                tileStatus(feature, isOn: isOn)
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(IsloStyle.faint)
-                            }
-                        }
-                        .padding(14)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(cardBackground(highlighted: isOn))
-                .contentShape(RoundedRectangle(cornerRadius: IsloStyle.cardRadius, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .modifier(NoFocusRing())
-            .accessibilityLabel(Text(title(feature)))
-            .accessibilityHint(Text(text("Ayrıntıları açar", "Opens its details")))
-
-            // On top of the tile, so switching doesn't open the details.
-            HStack(spacing: 12) {
-                switchControl(isEnabled(feature))
-                    .controlSize(isWide ? .regular : .small)
-                    .accessibilityLabel(Text(title(feature)))
-                if isWide {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(IsloStyle.faint)
-                        .allowsHitTesting(false)
-                }
-            }
-            .padding(isWide ? 18 : 14)
-        }
-    }
-
-    /// "On", "Off" or a permission warning, always the same height.
-    private func tileStatus(_ feature: Feature, isOn: Bool) -> some View {
-        Group {
-            if needsPermission(feature) {
-                Label(text("İzin gerekli", "Needs permission"), systemImage: "exclamationmark.triangle.fill")
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 7)
-                    .frame(height: 20)
-                    .background(Capsule().fill(Color.orange.opacity(0.14)))
-            } else {
-                Text(isOn ? text("Açık", "On") : text("Kapalı", "Off"))
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(isOn ? accent : IsloStyle.faint)
-                    .frame(height: 20)
-            }
-        }
-    }
-
-    private func featureDetail(_ feature: Feature) -> some View {
+    private func featurePage(_ feature: Feature) -> some View {
         let isOn = isEnabled(feature)
-        return VStack(alignment: .leading, spacing: 22) {
-            Button {
-                withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) { openFeature = nil }
-            } label: {
-                Label(text("Özellikler", "Features"), systemImage: "chevron.left")
-            }
-            .buttonStyle(IsloButtonStyle(accent: accent))
-            .keyboardShortcut(.cancelAction)
-
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 16) {
-                    IconTile(symbol: feature.symbol, colors: feature.colors, size: 56, isOn: isOn.wrappedValue)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(title(feature))
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
-                        Text(summary(feature))
-                            .font(.system(size: 13))
-                            .foregroundStyle(IsloStyle.muted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 16)
-                    switchControl(isOn)
-                        .controlSize(.large)
-                        .accessibilityLabel(Text(title(feature)))
+        return VStack(alignment: .leading, spacing: 20) {
+            HStack(spacing: 14) {
+                IconTile(symbol: feature.symbol, colors: feature.colors, size: 44, isOn: isOn.wrappedValue)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title(feature)).font(.system(size: 18, weight: .semibold))
+                    Text(summary(feature))
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(p.muted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Text(details(feature))
-                    .font(.system(size: 13))
-                    .foregroundStyle(IsloStyle.text.opacity(0.8))
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 16)
+                switchControl(isOn)
+                    .accessibilityLabel(Text(title(feature)))
             }
-            .padding(20)
-            .background(cardBackground(highlighted: isOn.wrappedValue))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(cardBackground)
 
-            if let permission = permission(for: feature) {
-                section(text("İzin", "Permission")) {
-                    permissionRow(permission)
-                }
+            if needsPermission(feature), let permission = permission(for: feature) {
+                group { permissionRow(permission) }
             }
 
             featureOptions(feature)
+                .disabled(!isOn.wrappedValue)
+                .opacity(isOn.wrappedValue ? 1 : 0.45)
+
+            footnote(details(feature))
+        }
+        .onAppear {
+            if feature == .timer || feature == .shortcuts, shortcutsManager.available.isEmpty {
+                shortcutsManager.reload()
+            }
         }
     }
 
@@ -727,105 +720,71 @@ struct SettingsView: View {
     private func featureOptions(_ feature: Feature) -> some View {
         switch feature {
         case .notifications:
-            section(text("Seçenekler", "Options")) {
-                row(symbol: "rectangle.on.rectangle.slash", colors: Tint.red, title: text("macOS'un bildirimini gizle", "Hide macOS's banner"), subtitle: text("Bildirim yalnızca çentikte görünür; köşedeki baloncuk gizlenir ama bildirim Bildirim Merkezi'nde kalır. Yanıt bekleyen uyarılar (ör. Takvim) birkaç saniye sonra yine görünür.", "The notification shows only in the notch; the corner banner is hidden but stays in Notification Center. Alerts that wait for an answer (e.g. Calendar) still appear after a few seconds.")) {
+            group {
+                row(text("macOS'un bildirimini gizle", "Hide macOS's banner"), subtitle: text("Köşedeki balon gizlenir; bildirim Bildirim Merkezi'nde kalır.", "The corner banner is hidden; the notification stays in Notification Center.")) {
                     switchControl($settings.hideSystemNotificationBanners)
                 }
                 divider
-                stackedRow(symbol: "text.bubble.fill", colors: Tint.red, title: text("Önizleme", "Preview"), subtitle: text("Çentik genişlediğinde bildirimin içeriği mi, yalnızca yeni bildirim geldiği mi görünsün?", "When the notch widens, show the notification's content or only that one arrived?")) {
-                    ChipPicker(selection: $settings.notificationPreviewStyle, options: NotificationPreviewStyle.allCases.map { ($0, $0.title(language: settings.language)) }, accent: accent, fillsWidth: true)
+                row(text("Önizleme", "Preview")) {
+                    ChipPicker(selection: $settings.notificationPreviewStyle, options: NotificationPreviewStyle.allCases.map { ($0, $0.title(language: settings.language)) }, accent: accent, onAccent: onAccent)
                 }
             }
-            notificationAppsSection
-            vipSection
-            notificationTips
+            notificationAppsGroup
+            vipGroup
+            notificationHelp
         case .calendar:
-            section(text("Seçenekler", "Options")) {
-                row(symbol: "bell.and.waves.left.and.right.fill", colors: Tint.pink, title: text("Toplantı uyarısı", "Meeting alert"), subtitle: text("Bir etkinlik başlamadan 5 dakika önce çentik genişleyip haber verir.", "The notch widens 5 minutes before an event starts.")) {
+            group {
+                row(text("Toplantı uyarısı", "Meeting alert"), subtitle: text("Etkinlikten 5 dakika önce çentik haber verir.", "The notch tells you 5 minutes before an event.")) {
                     switchControl($settings.calendarAlertsEnabled)
                 }
             }
+        case .screenshots:
+            group(footer: text(
+                "islo. kapalıyken macOS'un önizlemesi geri gelir. Klasörü değiştirmek için ⌘⇧5 > Seçenekler > Kaydetme Yeri; islo. yeni klasörü kendiliğinden izler.",
+                "macOS's thumbnail comes back while islo. isn't running. To change the folder, use ⌘⇧5 > Options > Save to; islo. follows it by itself."
+            )) {
+                row(text("macOS'un küçük önizlemesini kapat", "Turn off macOS's thumbnail"), subtitle: text("Görüntü anında kaydedilir ve hemen çentikte açılır.", "The screenshot is saved at once and opens in the notch right away.")) {
+                    switchControl($settings.hideSystemScreenshotThumbnail)
+                }
+                divider
+                row(text("Klasör", "Folder"), subtitle: (settings.folderURL(.screenshots).path as NSString).abbreviatingWithTildeInPath) {
+                    Button(text("Göster", "Show")) { NSWorkspace.shared.open(settings.folderURL(.screenshots)) }
+                        .buttonStyle(quietButton)
+                }
+            }
         case .timer:
-            section(text("Seçenekler", "Options")) {
-                row(symbol: "hourglass", colors: Tint.orange, title: text("Kapalı çentikte geri sayım", "Countdown in the closed notch"), subtitle: text("Zamanlayıcı çalışırken kalan süre çentiğin yanlarında görünür; bitince çentik haber verir.", "While a timer runs, the time left shows beside the notch, which tells you when it ends.")) {
+            group {
+                row(text("Kapalı çentikte geri sayım", "Countdown in the closed notch"), subtitle: text("Kalan süre çentiğin yanlarında görünür.", "The time left shows beside the notch.")) {
                     switchControl($settings.liveTimerInNotch)
                 }
             }
-            section(text("Pomodoro otomasyonu", "Pomodoro automation")) {
-                row(symbol: "play.fill", colors: Tint.shortcuts, title: text("Odak başlarken", "When focus starts"), subtitle: text("Örneğin Rahatsız Etme'yi açan bir kısayol.", "E.g. a shortcut that turns on Do Not Disturb.")) {
+            group(
+                text("Pomodoro", "Pomodoro"),
+                footer: text("Kısayollar uygulamasında \"Odak Modunu Ayarla\" eylemiyle Rahatsız Etme'yi açıp kapatan iki kısayol oluşturabilirsin.", "In the Shortcuts app, the \"Set Focus\" action can turn Do Not Disturb on and off in two shortcuts.")
+            ) {
+                row(text("Odak başlarken", "When focus starts")) {
                     shortcutPicker($settings.focusStartShortcut)
                 }
                 divider
-                row(symbol: "stop.fill", colors: Tint.shortcuts, title: text("Odak bitince", "When focus ends"), subtitle: text("Odak bittiğinde, atlandığında ya da sıfırlandığında çalışır.", "Runs when focus finishes, is skipped or is reset.")) {
+                row(text("Odak bitince", "When focus ends")) {
                     shortcutPicker($settings.focusEndShortcut)
                 }
-                tip(text("Kısayollar uygulamasında \"Odak Modunu Ayarla\" eylemiyle Rahatsız Etme'yi açıp kapatan iki kısayol oluşturabilirsin.", "In the Shortcuts app, the \"Set Focus\" action can turn Do Not Disturb on and off in two shortcuts."))
             }
         case .shortcuts:
-            section(text("Sekmede görünecekler", "Shown in the tab")) {
+            group(text("Çentikte görünecekler", "Shown in the notch")) {
                 shortcutFavoritesPicker
             }
         case .weather:
-            section(text("Seçenekler", "Options")) {
-                row(symbol: "cloud.rain.fill", colors: Tint.sky, title: text("Yağmur uyarısı", "Rain alert"), subtitle: text("Yağmur bir saat içinde başlayacaksa çentik haber verir. Ana sayfada hava durumuna tıklayınca saatlik tahmin açılır.", "The notch tells you when rain starts within the hour. Click the weather on Home for the hourly forecast.")) {
+            group(footer: text("Ana sayfada hava durumuna tıklayınca saatlik tahmin açılır.", "Click the weather on Home for the hourly forecast.")) {
+                row(text("Yağmur uyarısı", "Rain alert"), subtitle: text("Yağmur bir saat içinde başlayacaksa çentik haber verir.", "The notch tells you when rain starts within the hour.")) {
                     switchControl($settings.rainAlertsEnabled)
                 }
             }
-            section(text("Şehir", "City")) {
+            group(text("Şehir", "City")) {
                 weatherCityPicker
-            }
-        case .screenshots:
-            section(text("Seçenekler", "Options")) {
-                row(symbol: "bolt.fill", colors: Tint.purple, title: text("macOS'un küçük önizlemesini kapat", "Turn off macOS's thumbnail"), subtitle: text("Ekran görüntüsü anında kaydedilir ve önizlemesi hemen çentikte açılır. Kapatmazsan macOS köşedeki önizleme kaybolana kadar dosyayı yazmaz. islo. kapalıyken macOS'un önizlemesi geri gelir.", "The screenshot is saved at once and its preview opens in the notch right away. Otherwise macOS holds the file until the corner thumbnail goes away. macOS's thumbnail comes back while islo. isn't running.")) {
-                    switchControl($settings.hideSystemScreenshotThumbnail)
-                }
-            }
-            section(text("Klasör", "Folder")) {
-                row(symbol: "folder.fill", colors: Tint.purple, title: text("Ekran görüntülerinin kaydedildiği yer", "Where screenshots are saved"), subtitle: (settings.folderURL(.screenshots).path as NSString).abbreviatingWithTildeInPath) {
-                    Button(text("Göster", "Show")) {
-                        NSWorkspace.shared.open(settings.folderURL(.screenshots))
-                    }
-                    .buttonStyle(IsloButtonStyle(accent: accent))
-                }
-                tip(text("Yeri değiştirmek için ⌘⇧5 ile Ekran Görüntüsü uygulamasını açıp Seçenekler > Kaydetme Yeri'ni kullan; islo. yeni klasörü kendiliğinden izler.", "To change it, press ⌘⇧5 and use Options > Save to; islo. follows the new folder by itself."))
             }
         default:
             EmptyView()
-        }
-    }
-
-    private var notificationTips: some View {
-        section(text("Bildirim gelmiyor mu?", "Not seeing notifications?")) {
-            VStack(alignment: .leading, spacing: 9) {
-                bullet(text("islo., macOS'un ekranın köşesinde gösterdiği bildirimleri okur. Odak (Rahatsız Etme) açıkken macOS bildirim göstermez, islo. de göremez.", "islo. reads the notifications macOS shows in the corner of the screen. While a Focus (Do Not Disturb) is on, macOS shows none, so islo. can't either."))
-                bullet(text("Uygulamanın bildirimleri Sistem Ayarları > Bildirimler'de açık olmalı ve uyarı stili \"Yok\" olmamalı.", "The app's notifications must be on in System Settings > Notifications, with an alert style other than \"None\"."))
-                bullet(text("Bir sohbet uygulaması (ör. WhatsApp) öndeyken o sohbetin mesajları için macOS bildirim göstermez.", "While a chat app (e.g. WhatsApp) is in front, macOS doesn't show notifications for that chat."))
-                HStack {
-                    Spacer()
-                    Button(text("Bildirim ayarlarını aç", "Open Notification settings"), action: openNotificationSettings)
-                        .buttonStyle(IsloButtonStyle(accent: accent))
-                }
-                .padding(.top, 2)
-            }
-            .padding(.vertical, 12)
-        }
-    }
-
-    private func isEnabled(_ feature: Feature) -> Binding<Bool> {
-        switch feature {
-        case .notifications: $settings.dashboardNotificationsEnabled
-        case .commandEcho: $settings.dashboardCommandEchoEnabled
-        case .calendar: $settings.calendarEnabled
-        case .devices: $settings.devicesHUDEnabled
-        case .privacy: $settings.privacyIndicatorEnabled
-        case .screenshots: $settings.screenshotPreviewEnabled
-        case .downloads: $settings.downloadsEnabled
-        case .timer: $settings.dashboardFocusTimerEnabled
-        case .shelf: $settings.dashboardFileShelfEnabled
-        case .shortcuts: $settings.shortcutsEnabled
-        case .keepAwake: $settings.dashboardKeepAwakeEnabled
-        case .weather: $settings.weatherEnabled
-        case .lyrics: $settings.lyricsEnabled
         }
     }
 
@@ -833,10 +792,16 @@ struct SettingsView: View {
 
     /// Every app that has sent a notification, with whether the notch shows
     /// it or leaves it to macOS.
-    private var notificationAppsSection: some View {
-        section(text("Uygulamalar", "Apps")) {
+    private var notificationAppsGroup: some View {
+        group(
+            text("Uygulamalar", "Apps"),
+            footer: settings.knownNotificationApps.isEmpty ? nil : text("Kapattığın uygulamaların bildirimlerini macOS kendisi gösterir.", "macOS shows notifications from the apps you switch off itself.")
+        ) {
             if settings.knownNotificationApps.isEmpty {
-                tip(text("Bildirim gönderen uygulamalar burada listelenir; hangilerinin çentikte görüneceğini buradan seçersin.", "Apps that send notifications appear here, so you can choose which ones the notch shows."))
+                Text(text("Bildirim gönderen uygulamalar burada listelenir.", "Apps that send notifications show up here."))
+                    .font(.system(size: 12))
+                    .foregroundStyle(p.muted)
+                    .frame(minHeight: 46)
             } else {
                 ForEach(Array(settings.knownNotificationApps.enumerated()), id: \.offset) { index, app in
                     if index > 0 { divider }
@@ -857,28 +822,26 @@ struct SettingsView: View {
                 }
             }
         )
-        return HStack(spacing: 14) {
+        return HStack(spacing: 12) {
             Group {
                 if let icon = Self.appIcon(named: app) {
                     Image(nsImage: icon).resizable().interpolation(.high)
                 } else {
-                    IconTile(symbol: "app.badge.fill", colors: Tint.red)
+                    IconTile(symbol: "app.badge.fill", colors: Tint.red, size: 24)
                 }
             }
-            .frame(width: 30, height: 30)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(app).font(.system(size: 13.5, weight: .semibold))
-                Text(shown.wrappedValue
-                     ? text("Çentikte görünür", "Shows in the notch")
-                     : text("Çentikte görünmez; macOS gösterir", "Not in the notch; macOS shows it"))
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(IsloStyle.muted)
-            }
+            .frame(width: 26, height: 26)
+            Text(app).font(.system(size: 13, weight: .medium))
             Spacer(minLength: 12)
+            if !shown.wrappedValue {
+                Text(text("macOS gösterir", "macOS shows it"))
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(p.muted)
+            }
             switchControl(shown)
                 .accessibilityLabel(Text(app))
         }
-        .padding(.vertical, 10)
+        .frame(minHeight: 46)
     }
 
     private static func appIcon(named name: String) -> NSImage? {
@@ -893,56 +856,60 @@ struct SettingsView: View {
         return nil
     }
 
-    private var vipSection: some View {
-        section(text("VIP kişiler", "VIP people")) {
-            stackedRow(symbol: "star.fill", colors: Tint.orange, title: text("Öne çıkanlar", "Stand out"), subtitle: text("Bu kişilerden gelen mesajlar çentikte altın rengiyle ve daha uzun süre görünür. Adı bildirimde göründüğü gibi yaz.", "Messages from these people show in gold and stay longer in the notch. Write the name as it appears in the notification.")) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 8) {
-                        TextField(text("Ad ekle, örn. Ahmet", "Add a name, e.g. Alex"), text: $vipDraft)
-                            .textFieldStyle(.plain)
-                            .onSubmit(addVIP)
-                            .padding(.horizontal, 11)
-                            .frame(height: 30)
-                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.06)))
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(IsloStyle.line, lineWidth: 1))
-                        Button(text("Ekle", "Add"), action: addVIP)
-                            .buttonStyle(IsloButtonStyle(prominent: true, accent: accent))
-                            .disabled(vipDraft.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-                    if !settings.vipNames.isEmpty {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8, alignment: .leading)], alignment: .leading, spacing: 8) {
-                            ForEach(settings.vipNames, id: \.self) { name in
-                                HStack(spacing: 6) {
-                                    Image(systemName: "star.fill")
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundStyle(Color(red: 1, green: 0.8, blue: 0.32))
-                                    Text(name)
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .lineLimit(1)
-                                    Spacer(minLength: 2)
-                                    Button {
-                                        settings.vipNames.removeAll { $0 == name }
-                                    } label: {
-                                        Image(systemName: "xmark")
-                                            .font(.system(size: 8.5, weight: .bold))
-                                            .foregroundStyle(IsloStyle.muted)
-                                            .frame(width: 18, height: 18)
-                                            .background(Circle().fill(Color.white.opacity(0.08)))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityLabel(Text(text("\(name) kişisini kaldır", "Remove \(name)")))
-                                }
-                                .padding(.leading, 10)
-                                .padding(.trailing, 5)
-                                .frame(height: 28)
-                                .background(Capsule().fill(Color.white.opacity(0.07)))
-                                .overlay(Capsule().strokeBorder(IsloStyle.line, lineWidth: 1))
-                            }
-                        }
+    private var vipGroup: some View {
+        group(
+            text("VIP kişiler", "VIPs"),
+            footer: text("Bu kişilerden gelen mesajlar çentikte altın rengiyle ve daha uzun süre görünür. Adı bildirimde göründüğü gibi yaz.", "Messages from these people show in gold and stay longer. Write the name as it appears in the notification.")
+        ) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    TextField(text("Ad ekle, örn. Ahmet", "Add a name, e.g. Alex"), text: $vipDraft)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13))
+                        .onSubmit(addVIP)
+                        .padding(.horizontal, 10)
+                        .frame(height: 30)
+                        .background(fieldBackground)
+                    Button(text("Ekle", "Add"), action: addVIP)
+                        .buttonStyle(primaryButton)
+                        .disabled(vipDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                if !settings.vipNames.isEmpty {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8, alignment: .leading)], alignment: .leading, spacing: 8) {
+                        ForEach(settings.vipNames, id: \.self, content: vipChip)
                     }
                 }
             }
+            .padding(.vertical, 12)
         }
+    }
+
+    private func vipChip(_ name: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "star.fill")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Color(hex: 0xE8A600))
+            Text(name)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
+            Spacer(minLength: 2)
+            Button {
+                settings.vipNames.removeAll { $0 == name }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8.5, weight: .bold))
+                    .foregroundStyle(p.muted)
+                    .frame(width: 18, height: 18)
+                    .background(Circle().fill(p.fill))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(text("\(name) kişisini kaldır", "Remove \(name)")))
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 5)
+        .frame(height: 28)
+        .background(Capsule().fill(Color(hex: 0xFFF6DD)))
+        .overlay(Capsule().strokeBorder(Color(hex: 0xF0D68A), lineWidth: 1))
     }
 
     private func addVIP() {
@@ -952,6 +919,66 @@ struct SettingsView: View {
             settings.vipNames.append(name)
         }
         vipDraft = ""
+    }
+
+    /// Why notifications might not show, folded away until asked for.
+    private var notificationHelp: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showsNotificationHelp.toggle() }
+            } label: {
+                HStack {
+                    Text(text("Bildirim gelmiyor mu?", "Not seeing notifications?"))
+                        .font(.system(size: 13, weight: .medium))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(p.faint)
+                        .rotationEffect(.degrees(showsNotificationHelp ? 90 : 0))
+                }
+                .frame(minHeight: 46)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if showsNotificationHelp {
+                divider
+                VStack(alignment: .leading, spacing: 9) {
+                    bullet(text("Odak (Rahatsız Etme) açıkken macOS bildirim göstermez, islo. de göremez.", "While a Focus (Do Not Disturb) is on, macOS shows no notifications, so islo. can't either."))
+                    bullet(text("Uygulamanın bildirimleri Sistem Ayarları > Bildirimler'de açık olmalı ve uyarı stili \"Yok\" olmamalı.", "The app's notifications must be on in System Settings > Notifications, with an alert style other than \"None\"."))
+                    bullet(text("Bir sohbet uygulaması (ör. WhatsApp) öndeyken o sohbetin mesajları için macOS bildirim göstermez.", "While a chat app (e.g. WhatsApp) is in front, macOS doesn't show notifications for that chat."))
+                    HStack {
+                        Spacer()
+                        Button(text("Bildirim ayarlarını aç", "Open Notification settings"), action: openNotificationSettings)
+                            .buttonStyle(quietButton)
+                    }
+                    .padding(.top, 2)
+                }
+                .padding(.vertical, 12)
+            }
+        }
+        .padding(.horizontal, 14)
+        .background(cardBackground)
+    }
+
+    // MARK: Feature facts
+
+    private func isEnabled(_ feature: Feature) -> Binding<Bool> {
+        switch feature {
+        case .notifications: $settings.dashboardNotificationsEnabled
+        case .commandEcho: $settings.dashboardCommandEchoEnabled
+        case .calendar: $settings.calendarEnabled
+        case .devices: $settings.devicesHUDEnabled
+        case .privacy: $settings.privacyIndicatorEnabled
+        case .screenshots: $settings.screenshotPreviewEnabled
+        case .downloads: $settings.downloadsEnabled
+        case .timer: $settings.dashboardFocusTimerEnabled
+        case .shelf: $settings.dashboardFileShelfEnabled
+        case .shortcuts: $settings.shortcutsEnabled
+        case .keepAwake: $settings.dashboardKeepAwakeEnabled
+        case .weather: $settings.weatherEnabled
+        case .lyrics: $settings.lyricsEnabled
+        }
     }
 
     private func permission(for feature: Feature) -> FeaturePermission? {
@@ -1017,44 +1044,47 @@ struct SettingsView: View {
         }
     }
 
+    /// One or two lines under a feature's page: how it works, and what
+    /// leaves the Mac, if anything.
     private func details(_ feature: Feature) -> String {
         switch feature {
         case .notifications:
-            text("Yeni bir bildirim geldiğinde çentik genişleyip kimden geldiğini ve içeriğini gösterir; tıklayınca Bildirimler sekmesi açılır. islo. bildirimleri macOS'un ekranda gösterdiği bildirimlerden okur, bunun için Erişilebilirlik izni yeterlidir.", "When a notification arrives, the notch widens to show who it's from and what it says; click it to open the Notifications tab. islo. reads the notifications macOS shows on screen, so Accessibility access is all it needs.")
+            text("Bildirime tıklayınca Bildirimler sekmesi açılır. islo. bildirimleri macOS'un ekranda gösterdiklerinden okur; bunun için yalnızca Erişilebilirlik izni gerekir.", "Click a notification to open the Notifications tab. islo. reads the notifications macOS shows on screen, so it only needs Accessibility access.")
         case .commandEcho:
-            text("Ses ya da parlaklığı değiştirdiğinde macOS'un kendi göstergesi yerine çentik ince bir şeritle haber verir. Kopyalama, ekran görüntüsü ve Caps Lock da aynı şekilde görünür. macOS'un göstergesini gizleyebilmek için Erişilebilirlik izni gerekir.", "When you change the volume or brightness, the notch shows a slim bar instead of macOS's own indicator. Copying, screenshots and Caps Lock show the same way. Hiding macOS's indicator needs Accessibility access.")
+            text("Kopyalama, ekran görüntüsü ve Caps Lock da aynı ince şeritle görünür. macOS'un kendi göstergesini gizlemek için Erişilebilirlik izni gerekir.", "Copying, screenshots and Caps Lock show in the same slim bar. Hiding macOS's own indicator needs Accessibility access.")
         case .calendar:
-            text("Ana sayfada bugünün ve yarının etkinlikleri görünür; görüntülü görüşmelere tek tıkla katılırsın. Etkinlikler Mac'indeki Takvim'den okunur ve hiçbir yere gönderilmez.", "Home shows today's and tomorrow's events, and you join video calls in one click. Events are read from Calendar on your Mac and never sent anywhere.")
+            text("Etkinlikler Mac'indeki Takvim'den okunur ve hiçbir yere gönderilmez.", "Events are read from Calendar on your Mac and never sent anywhere.")
         case .devices:
-            text("Şarj takılınca ya da pil azalınca çentik haber verir. Bluetooth kulaklık (AirPods vb.) bağlanınca pil seviyelerini gösterir; çıkış cihazını şarkı kartından değiştirebilirsin.", "The notch tells you when the charger is plugged in or the battery runs low. When Bluetooth headphones (AirPods etc.) connect, it shows their battery; you can switch the output from the song card.")
+            text("AirPods gibi Bluetooth kulaklıklar bağlanınca pil seviyeleri görünür; çıkış cihazını şarkı kartından değiştirebilirsin.", "When Bluetooth headphones like AirPods connect, their battery shows; switch the output from the song card.")
         case .privacy:
-            text("Bir uygulama kamerayı ya da mikrofonu kullanırken kapalı çentiğin köşesinde renkli bir nokta belirir: yeşil kamera, turuncu mikrofon. Çentiği açınca hangi uygulama olduğu görünür.", "While an app uses the camera or microphone, a coloured dot appears at the corner of the closed notch: green for the camera, orange for the mic. Open the notch to see which app it is.")
+            text("Kamera kullanılırken yeşil, mikrofon kullanılırken turuncu bir nokta belirir. Çentiği açınca hangi uygulama olduğu görünür.", "A green dot shows while the camera is in use, orange for the mic. Open the notch to see which app it is.")
         case .screenshots:
-            text("Ekran görüntüsü aldığında küçük resmi çentiğin altında açılır. Sürükleyip istediğin yere bırak ya da Kopyala, Rafa ekle, Göster ve Sil ile tek tıkla işini gör.", "When you take a screenshot, its thumbnail opens under the notch. Drag it anywhere, or Copy, add to the Shelf, Show or Delete it in one click.")
+            text("Önizlemeyi istediğin yere sürükle ya da Kopyala, Rafa ekle, Göster ve Sil ile tek tıkla işini gör.", "Drag the preview anywhere, or Copy, add to the Shelf, Show or Delete it in one click.")
         case .downloads:
-            text("İndirilenler'e gelen dosyaların (Safari, Chrome, Firefox, AirDrop) ilerlemesi kapalı çentikte yeşil bir halkayla görünür; bitince Aç ve Göster düğmeleri çıkar.", "Files coming into Downloads (Safari, Chrome, Firefox, AirDrop) show their progress as a green ring in the closed notch, with Open and Show when they're done.")
+            text("Safari, Chrome, Firefox ve AirDrop'tan İndirilenler'e gelen dosyalar görünür; bitince Aç ve Göster düğmeleri çıkar.", "Files arriving in Downloads from Safari, Chrome, Firefox and AirDrop show up, with Open and Show when they're done.")
         case .timer:
-            text("Zamanlayıcı sekmesinde kadranı çevirerek ya da −/+ ile istediğin süreyi kur. Pomodoro modunda odak ve mola turları sırayla ilerler; bugünkü odak süren de orada görünür.", "In the Timer tab, turn the dial or use −/+ to set any length. Pomodoro mode alternates focus and breaks, and shows today's focus time.")
+            text("Kadranı çevirerek ya da −/+ ile süreyi kur. Pomodoro modunda odak ve mola turları sırayla ilerler.", "Turn the dial or use −/+ to set the time. Pomodoro mode alternates focus and breaks.")
         case .shelf:
-            text("Bir dosyayı çentiğe sürüklediğinde rafa eklenir. Oradan istediğin yere taşıyabilir ya da AirDrop ile gönderebilirsin. Raftan kaldırmak dosyayı silmez.", "Drag a file onto the notch to put it on the shelf. From there, move it anywhere or send it with AirDrop. Removing it from the shelf never deletes the file.")
+            text("Raftan kaldırmak dosyayı silmez. Otomatik temizleme süresini Raf sekmesinden seçebilirsin.", "Removing a file from the shelf never deletes it. Pick an auto-clear time in the Shelf tab.")
         case .shortcuts:
-            text("Kısayollar uygulamasından seçtiğin en fazla 7 kısayol, çentikteki Kısayollar sekmesinde renkli kutucuklar olarak durur ve tek tıkla çalışır.", "Up to seven shortcuts you pick from the Shortcuts app sit in the notch's Shortcuts tab as coloured tiles and run in one click.")
+            text("Kısayollar uygulamasından en fazla 7 kısayol seç; çentikte renkli kutucuklar olarak durur.", "Pick up to 7 shortcuts from the Shortcuts app; they sit in the notch as coloured tiles.")
         case .keepAwake:
-            text("Açtığında Mac, sen kapatana kadar uykuya geçmez; uzun indirmeler ve sunumlar için idealdir. Çentikten tek tıkla açıp kapatırsın.", "While it's on, your Mac won't sleep until you turn it off, handy for long downloads and presentations. Toggle it from the notch in one click.")
+            text("Açtığında Mac, sen kapatana kadar uyumaz. Çentikten tek tıkla açıp kapatırsın.", "While it's on, your Mac won't sleep until you turn it off. Toggle it from the notch in one click.")
         case .weather:
-            text("Ana sayfada sıcaklık ve hava durumu görünür. Veriler ücretsiz Open-Meteo'dan gelir ve konum izni gerekmez: şehir, Mac'in saat diliminden bulunur ya da aşağıdan seçilir.", "Home shows the temperature and conditions. Data comes from the free Open-Meteo service with no location permission: the city comes from your Mac's time zone, or pick one below.")
+            text("Veriler ücretsiz Open-Meteo'dan gelir; konum izni gerekmez. Şehir, Mac'in saat diliminden bulunur ya da yukarıdan seçilir.", "Data comes from the free Open-Meteo service with no location permission. The city comes from your Mac's time zone, or pick one above.")
         case .lyrics:
-            text("Şarkı kartındaki söz düğmesine basınca sözler şarkıyla birlikte satır satır akar. Sözler ücretsiz LRCLIB'den gelir; bunun için şarkının adı ve sanatçısı oraya gönderilir.", "Press the lyrics button in the song card and the lyrics follow the song line by line. They come from the free LRCLIB service, which receives the song's title and artist.")
+            text("Şarkı kartındaki söz düğmesine bas. Sözler ücretsiz LRCLIB'den gelir; bunun için şarkının adı ve sanatçısı oraya gönderilir.", "Press the lyrics button on the song card. Lyrics come from the free LRCLIB service, which receives the song's title and artist.")
         }
     }
 
     // MARK: Permissions
 
     private var permissionsPage: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 20) {
+            pageTitle(text("İzinler", "Permissions"))
             permissionSummary
 
-            section(text("Sistem izinleri", "System permissions")) {
+            group(text("Sistem", "System")) {
                 permissionRow(.accessibility)
                 if !settings.isAccessibilityTrusted {
                     accessibilitySteps
@@ -1069,14 +1099,12 @@ struct SettingsView: View {
                 }
             }
 
-            section(text("Müzik uygulamaları", "Music apps")) {
+            group(text("Müzik uygulamaları", "Music apps")) {
                 ForEach(Array(AutomationTarget.allCases.enumerated()), id: \.element) { index, target in
                     if index > 0 { divider }
                     automationRow(target)
                 }
             }
-
-            notificationTips
         }
     }
 
@@ -1092,20 +1120,23 @@ struct SettingsView: View {
             : isCalendarWaiting
                 ? text("Takvim etkinliklerinin görünmesi için aşağıdan Takvim iznini ver.", "Allow Calendars below so your events can show.")
                 : text("islo.'nun ihtiyaç duyduğu izinlerin hepsi verilmiş.", "islo. has every permission it needs.")
-        return HStack(spacing: 16) {
-            IconTile(symbol: missing > 0 ? "exclamationmark.shield.fill" : isCalendarWaiting ? "questionmark.circle.fill" : "checkmark.shield.fill", colors: missing > 0 ? Tint.orange : isCalendarWaiting ? Tint.blue : Tint.green, size: 46)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.system(size: 16, weight: .semibold))
+        return HStack(spacing: 13) {
+            IconTile(
+                symbol: missing > 0 ? "exclamationmark.shield.fill" : isCalendarWaiting ? "questionmark.circle.fill" : "checkmark.shield.fill",
+                colors: missing > 0 ? Tint.orange : isCalendarWaiting ? Tint.blue : Tint.green,
+                size: 36
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 14, weight: .semibold))
                 Text(detail)
                     .font(.system(size: 12))
-                    .foregroundStyle(IsloStyle.muted)
+                    .foregroundStyle(p.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
-        .padding(18)
-        .background(cardBackground(highlighted: false))
+        .padding(14)
+        .background(cardBackground)
     }
 
     private var missingPermissionImpact: String {
@@ -1135,43 +1166,41 @@ struct SettingsView: View {
         let state = permissionState(permission)
         switch permission {
         case .accessibility:
-            row(symbol: "hand.raised.fill", colors: Tint.blue, title: text("Erişilebilirlik", "Accessibility"), subtitle: text("Bildirimleri okumak, macOS'un ses ve parlaklık göstergesinin yerine geçmek ve kopyalamayı algılamak için. Bildirimler için başka izin gerekmez.", "To read notifications, stand in for macOS's volume and brightness indicator, and notice copying. Notifications need nothing else.")) {
+            row(text("Erişilebilirlik", "Accessibility"), subtitle: text("Bildirimleri okumak ve ses/parlaklık göstergesinin yerine geçmek için.", "To read notifications and stand in for the volume and brightness indicator."), symbol: "hand.raised.fill", colors: Tint.blue) {
                 HStack(spacing: 8) {
                     permissionBadge(state)
                     if state != .granted {
                         Button(text("İzin ver", "Allow"), action: settings.requestAccessibilityPermission)
-                            .buttonStyle(IsloButtonStyle(prominent: true, accent: accent))
+                            .buttonStyle(primaryButton)
                     }
                 }
             }
         case .calendar:
-            row(symbol: "calendar", colors: Tint.pink, title: text("Takvim", "Calendars"), subtitle: text("Sıradaki etkinliği göstermek ve toplantıdan önce uyarmak için.", "To show your next event and alert you before meetings.")) {
+            row(text("Takvim", "Calendars"), subtitle: text("Sıradaki etkinlik ve toplantı uyarısı için.", "For your next event and meeting alerts."), symbol: "calendar", colors: Tint.pink) {
                 HStack(spacing: 8) {
                     permissionBadge(state)
                     if state == .notAsked {
                         Button(text("İzin ver", "Allow"), action: calendarManager.requestAccess)
-                            .buttonStyle(IsloButtonStyle(prominent: true, accent: accent))
+                            .buttonStyle(primaryButton)
                     } else if state == .missing {
                         Button(text("Ayarları aç", "Open Settings"), action: calendarManager.openPrivacySettings)
-                            .buttonStyle(IsloButtonStyle(prominent: true, accent: accent))
+                            .buttonStyle(primaryButton)
                     }
                 }
             }
         case .folder(let folder):
             let name = (settings.folderURL(folder).path as NSString).abbreviatingWithTildeInPath
             row(
+                folder == .screenshots ? text("Ekran görüntüsü klasörü", "Screenshot folder") : text("İndirilenler klasörü", "Downloads folder"),
+                subtitle: name,
                 symbol: folder == .screenshots ? "camera.viewfinder" : "arrow.down.circle.fill",
-                colors: folder == .screenshots ? Tint.purple : Tint.mint,
-                title: folder == .screenshots ? text("Ekran görüntüsü klasörü", "Screenshot folder") : text("İndirilenler klasörü", "Downloads folder"),
-                subtitle: (folder == .screenshots
-                    ? text("Yeni ekran görüntülerini görmek için: ", "To see new screenshots: ")
-                    : text("İnen dosyaları görmek için: ", "To see downloaded files: ")) + name
+                colors: folder == .screenshots ? Tint.purple : Tint.mint
             ) {
                 HStack(spacing: 8) {
                     permissionBadge(state)
                     if state == .missing {
                         Button(text("Düzelt", "Fix")) { settings.requestFolderAccess(folder) }
-                            .buttonStyle(IsloButtonStyle(prominent: true, accent: accent))
+                            .buttonStyle(primaryButton)
                     }
                 }
             }
@@ -1185,14 +1214,14 @@ struct SettingsView: View {
             permissionStep(3, text("Bu sayfa birkaç saniye içinde kendiliğinden “Verildi” olur.", "This page changes to “Allowed” by itself within seconds."))
             Text(text("Güncellemeden sonra islo. listede açık görünse bile burada “Eksik” yazıyorsa yine “İzin ver”e bas; islo. eski kaydı kendisi temizler.", "If islo. looks switched on in the list after an update but this still says “Missing”, click “Allow” anyway; islo. clears the old entry itself."))
                 .font(.system(size: 11))
-                .foregroundStyle(IsloStyle.muted)
+                .foregroundStyle(p.muted)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 2)
         }
-        .padding(14)
+        .padding(13)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.orange.opacity(0.1)))
-        .padding(.leading, 44)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.orange.opacity(0.09)))
+        .padding(.leading, 38)
         .padding(.bottom, 12)
     }
 
@@ -1209,14 +1238,14 @@ struct SettingsView: View {
 
     private func automationRow(_ target: AutomationTarget) -> some View {
         let state = settings.automationStates[target] ?? .appClosed
-        return row(symbol: target == .music ? "music.note" : "waveform", colors: target == .music ? Tint.red : Tint.green, title: target.name, subtitle: automationSubtitle(state)) {
+        return row(target.name, subtitle: automationSubtitle(state), symbol: target == .music ? "music.note" : "waveform", colors: target == .music ? Tint.red : Tint.green) {
             HStack(spacing: 8) {
                 permissionBadge(state)
                 if state == .missing || state == .notAsked {
                     Button(state == .missing ? text("Düzelt", "Fix") : text("İzin ver", "Allow")) {
                         settings.requestAutomationPermission(for: target)
                     }
-                    .buttonStyle(IsloButtonStyle(prominent: true, accent: accent))
+                    .buttonStyle(primaryButton)
                 }
             }
         }
@@ -1225,9 +1254,9 @@ struct SettingsView: View {
     private func automationSubtitle(_ state: PermissionState) -> String {
         switch state {
         case .missing:
-            text("Kapalı olduğu için çalan şarkı gösterilemiyor ve kontrol edilemiyor. “Düzelt” macOS'un yeniden sormasını sağlar.", "It's off, so the current song can't be shown or controlled. “Fix” makes macOS ask again.")
+            text("Kapalı; çalan şarkı gösterilemiyor. “Düzelt” macOS'un yeniden sormasını sağlar.", "Off, so the current song can't show. “Fix” makes macOS ask again.")
         case .appClosed:
-            text("Çalan şarkıyı göstermek ve kontrol etmek için. Durumu, uygulama açıkken görünür.", "To show and control the current song. Its status shows while the app is open.")
+            text("Çalan şarkı için. Durumu, uygulama açıkken görünür.", "For the current song. Its status shows while the app is open.")
         case .appNotInstalled:
             text("Bu Mac'te yüklü değil.", "Not installed on this Mac.")
         case .granted, .notAsked:
@@ -1237,148 +1266,163 @@ struct SettingsView: View {
 
     private func permissionBadge(_ state: PermissionState) -> some View {
         let style: (title: String, symbol: String, color: Color) = switch state {
-        case .granted: (text("Verildi", "Allowed"), "checkmark.circle.fill", .green)
-        case .missing: (text("Eksik", "Missing"), "exclamationmark.triangle.fill", .orange)
-        case .notAsked: (text("Sorulmadı", "Not asked"), "questionmark.circle.fill", IsloStyle.muted)
-        case .appClosed: (text("Uygulama kapalı", "App not running"), "moon.zzz.fill", IsloStyle.muted)
-        case .appNotInstalled: (text("Yüklü değil", "Not installed"), "minus.circle.fill", IsloStyle.muted)
+        case .granted: (text("Verildi", "Allowed"), "checkmark.circle.fill", p.good)
+        case .missing: (text("Eksik", "Missing"), "exclamationmark.triangle.fill", p.warning)
+        case .notAsked: (text("Sorulmadı", "Not asked"), "questionmark.circle.fill", p.muted)
+        case .appClosed: (text("Uygulama kapalı", "App not running"), "moon.zzz.fill", p.muted)
+        case .appNotInstalled: (text("Yüklü değil", "Not installed"), "minus.circle.fill", p.muted)
         }
         return Label(style.title, systemImage: style.symbol)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(style.color)
             .padding(.horizontal, 9)
             .frame(height: 22)
-            .background(Capsule().fill(style.color.opacity(0.14)))
+            .background(Capsule().fill(style.color.opacity(0.12)))
             .fixedSize()
     }
 
     // MARK: About
 
     private var aboutPage: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            HStack(spacing: 18) {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(spacing: 16) {
                 Image(nsImage: NSApp.applicationIconImage)
-                    .resizable().scaledToFit().frame(width: 84, height: 84)
-                    .shadow(color: accent.opacity(0.4), radius: 22, y: 6)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("islo.").font(.system(size: 32, weight: .bold, design: .rounded))
+                    .resizable().scaledToFit().frame(width: 64, height: 64)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("islo.").font(.system(size: 26, weight: .bold, design: .rounded))
                     Text(text("Mac'inin üstünde, gününün yanında.", "At the top of your Mac, close to your day."))
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(IsloStyle.muted)
-                    Text(versionText)
-                        .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                        .foregroundStyle(accent)
-                        .padding(.horizontal, 9)
-                        .frame(height: 22)
-                        .background(Capsule().fill(accent.opacity(0.14)))
-                        .padding(.top, 4)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(p.muted)
                 }
-                Spacer(minLength: 0)
+                Spacer(minLength: 12)
+                Text(versionText)
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(p.muted)
+                    .padding(.horizontal, 10)
+                    .frame(height: 24)
+                    .background(Capsule().fill(p.fill))
             }
-            .padding(20)
-            .background(cardBackground(highlighted: true))
+            .padding(18)
+            .background(cardBackground)
 
-            section(text("Güncellemeler", "Updates")) {
-                row(symbol: "arrow.down.circle.fill", colors: Tint.blue, title: text("Güncellemeleri denetle", "Check for updates"), subtitle: text("Yeni sürümler imzalı GitHub sürümlerinden gelir.", "New versions come from signed GitHub releases.")) {
+            group(text("Güncellemeler", "Updates")) {
+                row(text("Güncellemeleri denetle", "Check for updates"), subtitle: text("Yeni sürümler imzalı GitHub sürümlerinden gelir.", "New versions come from signed GitHub releases.")) {
                     Button(text("Şimdi denetle", "Check now")) { updateManager.checkForUpdates() }
-                        .buttonStyle(IsloButtonStyle(prominent: true, accent: accent))
+                        .buttonStyle(primaryButton)
                         .disabled(!updateManager.canCheckForUpdates)
                 }
                 divider
-                row(symbol: "arrow.triangle.2.circlepath", colors: Tint.teal, title: text("Otomatik güncelle", "Update automatically"), subtitle: text("Yeni sürümleri kendiliğinden indirip hazırlar.", "Downloads and prepares new versions by itself.")) {
+                row(text("Otomatik güncelle", "Update automatically")) {
                     switchControl(automaticUpdatesBinding)
                 }
             }
 
-            section(text("Bağlantılar", "Links")) {
-                row(symbol: "globe", colors: Tint.indigo, title: text("Web sitesi", "Website"), subtitle: "ozdmrysn.github.io/islo") {
+            group(text("Bağlantılar", "Links")) {
+                row(text("Web sitesi", "Website"), subtitle: "ozdmrysn.github.io/islo") {
                     Button(text("Aç", "Open")) { open("https://ozdmrysn.github.io/islo/") }
-                        .buttonStyle(IsloButtonStyle(accent: accent))
+                        .buttonStyle(quietButton)
                 }
                 divider
-                row(symbol: "chevron.left.forwardslash.chevron.right", colors: Tint.gray, title: "GitHub", subtitle: "github.com/OzdmrYsn/islo") {
+                row("GitHub", subtitle: "github.com/OzdmrYsn/islo") {
                     Button(text("Aç", "Open")) { open("https://github.com/OzdmrYsn/islo") }
-                        .buttonStyle(IsloButtonStyle(accent: accent))
+                        .buttonStyle(quietButton)
                 }
                 divider
-                row(symbol: "sparkles", colors: Tint.purple, title: text("Tanıtım", "Welcome guide"), subtitle: text("islo.'yu ilk açtığındaki tanıtımı yeniden göster.", "Show the guide from islo.'s first launch again.")) {
+                row(text("Tanıtım", "Welcome guide"), subtitle: text("İlk açılıştaki tanıtımı yeniden göster.", "Show the guide from the first launch again.")) {
                     Button(text("Göster", "Show")) { onShowOnboarding() }
-                        .buttonStyle(IsloButtonStyle(accent: accent))
+                        .buttonStyle(quietButton)
                 }
             }
 
             Text(text("Yasin Özdemir tarafından geliştirildi.", "Built by Yasin Özdemir."))
                 .font(.system(size: 11.5))
-                .foregroundStyle(IsloStyle.faint)
+                .foregroundStyle(p.faint)
                 .frame(maxWidth: .infinity)
         }
     }
 
     // MARK: Building blocks
 
-    private func sectionLabel(_ title: String) -> some View {
-        Text(title.uppercased(with: Locale(identifier: settings.language == .turkish ? "tr_TR" : "en_US")))
-            .font(.system(size: 11, weight: .semibold))
-            .tracking(0.9)
-            .foregroundStyle(IsloStyle.faint)
-            .padding(.leading, 4)
+    private func pageTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 24, weight: .bold))
+            .tracking(-0.3)
+            .padding(.leading, 2)
     }
 
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            sectionLabel(title)
-            VStack(alignment: .leading, spacing: 0) {
-                content()
+    /// A white card of rows, with an optional title above and note below.
+    private func group<Content: View>(_ title: String? = nil, footer: String? = nil, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let title {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(p.text.opacity(0.88))
+                    .padding(.leading, 2)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(cardBackground(highlighted: false))
+            VStack(alignment: .leading, spacing: 0, content: content)
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(cardBackground)
+            if let footer { footnote(footer) }
         }
     }
 
-    private func row<Accessory: View>(symbol: String, colors: [Color], title: String, subtitle: String, @ViewBuilder accessory: () -> Accessory) -> some View {
-        HStack(spacing: 14) {
-            IconTile(symbol: symbol, colors: colors)
+    private func row<Accessory: View>(
+        _ title: String,
+        subtitle: String? = nil,
+        symbol: String? = nil,
+        colors: [Color] = [],
+        @ViewBuilder accessory: () -> Accessory
+    ) -> some View {
+        HStack(spacing: 12) {
+            if let symbol { IconTile(symbol: symbol, colors: colors, size: 26) }
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13.5, weight: .semibold))
-                Text(subtitle)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(IsloStyle.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(title).font(.system(size: 13, weight: .medium))
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(p.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 16)
             accessory()
         }
-        .padding(.vertical, 11)
+        .padding(.vertical, 9)
+        .frame(minHeight: 46)
     }
 
     /// A row whose control is too wide to sit beside the title.
-    private func stackedRow<Content: View>(symbol: String, colors: [Color], title: String, subtitle: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 14) {
-                IconTile(symbol: symbol, colors: colors)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 13.5, weight: .semibold))
+    private func stackedRow<Content: View>(_ title: String, subtitle: String? = nil, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 13, weight: .medium))
+                if let subtitle {
                     Text(subtitle)
                         .font(.system(size: 11.5))
-                        .foregroundStyle(IsloStyle.muted)
+                        .foregroundStyle(p.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            content().padding(.leading, 44)
+            content()
         }
         .padding(.vertical, 12)
     }
 
-    private func sliderRow(symbol: String, colors: [Color], title: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double, valueText: String) -> some View {
+    private func sliderRow(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double, valueText: String) -> some View {
         // Rounded here rather than with `step:`, which draws a row of ticks.
         let stepped = Binding<Double>(
             get: { value.wrappedValue },
             set: { value.wrappedValue = min(max((($0 - range.lowerBound) / step).rounded() * step + range.lowerBound, range.lowerBound), range.upperBound) }
         )
-        return row(symbol: symbol, colors: colors, title: title, subtitle: valueText) {
-            Slider(value: stepped, in: range).frame(width: 200)
+        return row(title) {
+            HStack(spacing: 12) {
+                Text(valueText)
+                    .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    .foregroundStyle(p.muted)
+                    .frame(minWidth: 46, alignment: .trailing)
+                Slider(value: stepped, in: range).frame(width: 180)
+            }
         }
     }
 
@@ -1387,35 +1431,29 @@ struct SettingsView: View {
     }
 
     private var divider: some View {
-        Rectangle().fill(IsloStyle.line).frame(height: 1).padding(.leading, 44)
+        Rectangle().fill(p.line).frame(height: 1)
     }
 
-    private func cardBackground(highlighted: Bool) -> some View {
-        let shape = RoundedRectangle(cornerRadius: IsloStyle.cardRadius, style: .continuous)
+    private var cardBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         return shape
-            .fill(IsloStyle.cardFill)
-            .overlay {
-                if highlighted {
-                    shape.fill(LinearGradient(colors: [accent.opacity(0.1), .clear], startPoint: .topLeading, endPoint: .center))
-                }
-            }
-            .overlay(shape.strokeBorder(IsloStyle.line, lineWidth: 1))
+            .fill(p.card)
+            .overlay(shape.strokeBorder(p.line, lineWidth: 1))
+            .shadow(color: Color.black.opacity(0.035), radius: 2, y: 1)
     }
 
-    private func tip(_ message: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "lightbulb.fill")
-                .font(.system(size: 11))
-                .foregroundStyle(.yellow)
-                .padding(.top, 1)
-            Text(message)
-                .font(.system(size: 11.5))
-                .foregroundStyle(IsloStyle.muted)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.leading, 44)
-        .padding(.top, 2)
-        .padding(.bottom, 12)
+    private var fieldBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        return shape.fill(p.fill).overlay(shape.strokeBorder(p.line, lineWidth: 1))
+    }
+
+    private func footnote(_ message: String) -> some View {
+        Text(message)
+            .font(.system(size: 11.5))
+            .foregroundStyle(p.muted)
+            .lineSpacing(1.5)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 2)
     }
 
     private func bullet(_ message: String) -> some View {
@@ -1423,7 +1461,7 @@ struct SettingsView: View {
             Circle().fill(accent).frame(width: 5, height: 5).padding(.top, 6)
             Text(message)
                 .font(.system(size: 12))
-                .foregroundStyle(IsloStyle.text.opacity(0.82))
+                .foregroundStyle(p.text.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -1438,21 +1476,20 @@ struct SettingsView: View {
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.orange.opacity(0.12))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.orange.opacity(0.25), lineWidth: 1))
+            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.orange.opacity(0.1))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.orange.opacity(0.28), lineWidth: 1))
         )
     }
 
     private func inlineNotice(_ message: String, buttonTitle: String? = nil, action: @escaping () -> Void = {}) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-            Text(message).font(.system(size: 12)).foregroundStyle(IsloStyle.muted)
+            Text(message).font(.system(size: 12)).foregroundStyle(p.muted)
             Spacer()
             if let buttonTitle {
-                Button(buttonTitle, action: action).buttonStyle(IsloButtonStyle(accent: accent))
+                Button(buttonTitle, action: action).buttonStyle(quietButton)
             }
         }
-        .padding(.leading, 44)
         .padding(.bottom, 12)
     }
 
@@ -1463,18 +1500,18 @@ struct SettingsView: View {
             HStack(spacing: 8) {
                 Text(text("\(settings.shortcutFavorites.count)/7 seçili", "\(settings.shortcutFavorites.count) of 7 picked"))
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(IsloStyle.muted)
+                    .foregroundStyle(p.muted)
                 Spacer()
                 if shortcutsManager.isLoading { ProgressView().controlSize(.small) }
                 Button(text("Yenile", "Refresh"), action: shortcutsManager.reload)
-                    .buttonStyle(IsloButtonStyle(accent: accent))
+                    .buttonStyle(quietButton)
                 Button(text("Kısayollar'ı aç", "Open Shortcuts"), action: shortcutsManager.openShortcutsApp)
-                    .buttonStyle(IsloButtonStyle(accent: accent))
+                    .buttonStyle(quietButton)
             }
             if shortcutsManager.available.isEmpty, !shortcutsManager.isLoading {
                 Text(text("Hiç kısayol bulunamadı. Kısayollar uygulamasında bir kısayol oluşturup Yenile'ye bas.", "No shortcuts found. Create one in the Shortcuts app, then click Refresh."))
                     .font(.system(size: 12))
-                    .foregroundStyle(IsloStyle.muted)
+                    .foregroundStyle(p.muted)
             } else {
                 ScrollView {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8, alignment: .leading)], alignment: .leading, spacing: 8) {
@@ -1486,7 +1523,7 @@ struct SettingsView: View {
                     }
                     .padding(.vertical, 2)
                 }
-                .frame(maxHeight: 200)
+                .frame(maxHeight: 240)
             }
         }
         .padding(.vertical, 14)
@@ -1505,20 +1542,20 @@ struct SettingsView: View {
             HStack(spacing: 7) {
                 Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(isOn ? Color.white : IsloStyle.faint)
+                    .foregroundStyle(isOn ? Color.white : p.faint)
                 Text(name)
                     .font(.system(size: 12, weight: .semibold))
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(isOn ? Color.white : IsloStyle.text.opacity(0.8))
+            .foregroundStyle(isOn ? Color.white : p.text)
             .padding(.horizontal, 11)
             .frame(height: 32)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isOn ? AnyShapeStyle(LinearGradient(colors: Tint.shortcuts, startPoint: .topLeading, endPoint: .bottomTrailing)) : AnyShapeStyle(Color.white.opacity(0.06)))
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(isOn ? AnyShapeStyle(LinearGradient(colors: Tint.shortcuts, startPoint: .topLeading, endPoint: .bottomTrailing)) : AnyShapeStyle(p.fill))
             )
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(.plain)
         .opacity(isFull ? 0.4 : 1)
@@ -1539,35 +1576,36 @@ struct SettingsView: View {
             ForEach(Array(shortcutsManager.available.enumerated()), id: \.offset) { Text($0.element).tag($0.element) }
         }
         .labelsHidden()
-        .frame(width: 190)
+        // The theme colour reads poorly as menu text on white (yellow, mint).
+        .tint(p.text)
+        .frame(width: 200)
     }
 
     private var weatherCityPicker: some View {
         VStack(alignment: .leading, spacing: 0) {
-            row(symbol: "mappin.and.ellipse", colors: Tint.sky, title: settings.weatherLocation?.name ?? text("Otomatik", "Automatic"), subtitle: weatherLocationText) {
+            row(settings.weatherLocation?.name ?? text("Otomatik", "Automatic"), subtitle: weatherLocationText) {
                 if settings.weatherLocation != nil {
                     Button(text("Otomatiğe dön", "Use automatic")) { settings.weatherLocation = nil }
-                        .buttonStyle(IsloButtonStyle(accent: accent))
+                        .buttonStyle(quietButton)
                 }
             }
             divider
             HStack(spacing: 8) {
                 HStack(spacing: 7) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(IsloStyle.faint)
+                    Image(systemName: "magnifyingglass").foregroundStyle(p.faint)
                     TextField(text("Şehir ara", "Search city"), text: $weatherQuery)
                         .textFieldStyle(.plain)
+                        .font(.system(size: 13))
                         .onSubmit(searchWeatherCity)
                 }
-                .padding(.horizontal, 11)
+                .padding(.horizontal, 10)
                 .frame(height: 30)
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.06)))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(IsloStyle.line, lineWidth: 1))
+                .background(fieldBackground)
                 if isSearchingWeather { ProgressView().controlSize(.small) }
                 Button(text("Ara", "Search"), action: searchWeatherCity)
-                    .buttonStyle(IsloButtonStyle(prominent: true, accent: accent))
+                    .buttonStyle(primaryButton)
                     .disabled(weatherQuery.trimmingCharacters(in: .whitespaces).isEmpty || isSearchingWeather)
             }
-            .padding(.leading, 44)
             .padding(.vertical, 12)
             if !weatherResults.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
@@ -1579,7 +1617,7 @@ struct SettingsView: View {
                         } label: {
                             HStack(spacing: 6) {
                                 Text(location.name).font(.system(size: 12, weight: .semibold))
-                                Text(location.detail).font(.system(size: 11.5)).foregroundStyle(IsloStyle.muted)
+                                Text(location.detail).font(.system(size: 11.5)).foregroundStyle(p.muted)
                                 Spacer()
                             }
                             .padding(.horizontal, 10)
@@ -1590,8 +1628,7 @@ struct SettingsView: View {
                     }
                 }
                 .padding(6)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.05)))
-                .padding(.leading, 44)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(p.fill))
                 .padding(.bottom, 12)
             }
         }
@@ -1626,6 +1663,10 @@ struct SettingsView: View {
 
     private func text(_ turkish: String, _ english: String) -> String { settings.language.value(turkish: turkish, english: english) }
     private var accent: Color { settings.accentTheme.color }
+    /// Text on the theme colour: dark on the light colours.
+    private var onAccent: Color { settings.accentTheme == .yellow || settings.accentTheme == .mint ? .black : .white }
+    private var primaryButton: IsloButtonStyle { IsloButtonStyle(prominent: true, accent: accent, onAccent: onAccent) }
+    private var quietButton: IsloButtonStyle { IsloButtonStyle(accent: accent) }
     private var launchAtLoginBinding: Binding<Bool> { Binding(get: { settings.launchAtLogin }, set: settings.setLaunchAtLogin) }
     private var automaticUpdatesBinding: Binding<Bool> { Binding(get: { updateManager.automaticUpdatesEnabled }, set: updateManager.setAutomaticUpdates) }
     private var versionText: String {
@@ -1641,18 +1682,20 @@ private struct ShortcutRecorder: View {
     let accent: Color
     @State private var isRecording = false
     @State private var monitor: Any?
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
+        let palette = IsloPalette.of(scheme)
         Button(action: { isRecording ? stop() : start() }) {
             Text(isRecording ? language.value(turkish: "Tuşlara bas…", english: "Press keys…") : hotKey.displayString)
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(isRecording ? accent : IsloStyle.text)
+                .foregroundStyle(isRecording ? accent : palette.text)
                 .frame(minWidth: 104)
                 .padding(.horizontal, 12)
                 .frame(height: 30)
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(isRecording ? accent.opacity(0.16) : Color.white.opacity(0.07)))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(isRecording ? accent : Color.white.opacity(0.12), lineWidth: 1))
-                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(isRecording ? accent.opacity(0.14) : palette.fill))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(isRecording ? accent : palette.line, lineWidth: 1))
+                .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(.plain)
         .onDisappear(perform: stop)
@@ -1708,7 +1751,7 @@ struct AccentSwatchPicker: View {
     let language: AppLanguage
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             ForEach(AccentTheme.allCases) { theme in
                 let isSelected = selection == theme
                 Button {
@@ -1716,7 +1759,7 @@ struct AccentSwatchPicker: View {
                 } label: {
                     Circle()
                         .fill(LinearGradient(colors: [theme.color.opacity(0.85), theme.color], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        .frame(width: 26, height: 26)
+                        .frame(width: 24, height: 24)
                         .overlay {
                             if isSelected {
                                 Image(systemName: "checkmark")
@@ -1724,7 +1767,7 @@ struct AccentSwatchPicker: View {
                                     .foregroundStyle(theme == .yellow || theme == .mint ? Color.black : Color.white)
                             }
                         }
-                        .shadow(color: theme.color.opacity(isSelected ? 0.55 : 0), radius: 7)
+                        .shadow(color: theme.color.opacity(isSelected ? 0.45 : 0), radius: 6)
                         .padding(3)
                         .overlay(Circle().stroke(isSelected ? theme.color : Color.clear, lineWidth: 2))
                         .contentShape(Circle())
@@ -1743,9 +1786,11 @@ struct SurfaceTonePicker: View {
     @Binding var selection: SurfaceTone
     let accent: Color
     let language: AppLanguage
+    @Environment(\.colorScheme) private var scheme
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
 
     var body: some View {
+        let palette = IsloPalette.of(scheme)
         LazyVGrid(columns: columns, spacing: 10) {
             ForEach(SurfaceTone.allCases) { tone in
                 let isSelected = selection == tone
@@ -1753,7 +1798,7 @@ struct SurfaceTonePicker: View {
                     withAnimation(.easeInOut(duration: 0.18)) { selection = tone }
                 } label: {
                     VStack(spacing: 7) {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(Color.black)
                             .overlay {
                                 LinearGradient(
@@ -1761,19 +1806,18 @@ struct SurfaceTonePicker: View {
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 )
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             }
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
                             .frame(height: 42)
                         Text(tone.title(language: language))
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(isSelected ? IsloStyle.text : IsloStyle.muted)
+                            .foregroundStyle(isSelected ? palette.text : palette.muted)
                             .lineLimit(1)
                     }
-                    .padding(7)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(isSelected ? 0.08 : 0.04)))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(isSelected ? accent : Color.white.opacity(0.08), lineWidth: isSelected ? 2 : 1))
-                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(6)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(isSelected ? accent.opacity(0.08) : palette.fill.opacity(0.6)))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(isSelected ? accent : palette.line, lineWidth: isSelected ? 2 : 1))
+                    .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])

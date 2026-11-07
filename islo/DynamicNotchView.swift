@@ -998,23 +998,11 @@ struct DynamicNotchView: View {
 
     private var dashboardHomeSection: some View {
         HStack(spacing: 14) {
-            if settings.homeWidgetStyle == .focus && settings.dashboardFocusTimerEnabled {
-                dashboardCard { dashboardFocusPane }
-            } else {
-                dashboardCard { dashboardMediaPane }
-                    .background(mediaArtworkGlow)
-            }
+            dashboardCard { dashboardMediaPane }
+                .background(mediaArtworkGlow)
 
             dashboardCard { dashboardSidePane }
-                .frame(width: dashboardSideWidth)
-        }
-    }
-
-    private var dashboardSideWidth: CGFloat {
-        switch settings.homeWidgetStyle {
-        case .media: 190
-        case .day: 310
-        case .balanced, .focus: 238
+                .frame(width: 238)
         }
     }
 
@@ -1913,7 +1901,7 @@ struct DynamicNotchView: View {
         NotificationCenter.default.post(
             name: .isloShowSettings,
             object: nil,
-            userInfo: ["destination": "modules"]
+            userInfo: ["feature": "shortcuts"]
         )
     }
 

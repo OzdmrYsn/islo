@@ -22,12 +22,12 @@ final class SettingsWindowController: NSWindowController {
             turkish: "islo. Ayarları",
             english: "islo. Settings"
         )
-        // The dark islo. look runs edge to edge, under the traffic lights.
+        // Settings is light and runs edge to edge, under the traffic lights.
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = true
-        window.appearance = NSAppearance(named: .darkAqua)
-        window.backgroundColor = NSColor(red: 0.035, green: 0.035, blue: 0.045, alpha: 1)
+        window.appearance = NSAppearance(named: .aqua)
+        window.backgroundColor = NSColor(srgbRed: 0.961, green: 0.961, blue: 0.969, alpha: 1)
         let hostingController = NSHostingController(rootView: rootView)
         // The window sets the size; the view fills it, titlebar area included.
         hostingController.sizingOptions = []
