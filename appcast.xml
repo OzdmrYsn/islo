@@ -3,6 +3,48 @@
     <channel>
         <title>islo.</title>
         <item>
+            <title>2.5.4</title>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
+<h3>Türkçe</h3>
+<p>islo. 2.5.4 ile Ayarlar baştan tasarlandı: açık renkli, sade ve aradığını bulmak kolay.</p>
+<h4>Yenilikler</h4>
+<ul>
+<li><b>Açık renkli Ayarlar:</b> Beyaz kartlar ve kısa satırlar. Çentik ve tanıtım ekranı koyu kalır.</li>
+<li><b>Her özellik sol menüde:</b> Bildirimler, Takvim, Zamanlayıcı, Hava durumu ve diğerlerinin hepsi menüde ayrı bir satır. Kapalı özelliklerin simgesi gri, izin bekleyenlerin yanında uyarı görünür.</li>
+<li><b>Sade özellik sayfaları:</b> Üstte aç/kapa anahtarı, altında yalnızca o özelliğin seçenekleri. Uzun açıklamalar sayfanın altında kısa bir nota indi.</li>
+<li><b>Tek "Varsayılanlara dön":</b> İki ayrı düğme teke indi ve önce onay sorar.</li>
+</ul>
+<h4>Değişiklikler</h4>
+<ul>
+<li><b>Ana sayfa düzeni:</b> "Öne çıkan" seçimi kaldırıldı; ana sayfa her zaman dengeli düzende açılır.</li>
+<li><b>Kısayollar sekmesi:</b> Ayar düğmesi doğrudan Kısayollar sayfasını açar.</li>
+</ul>
+<p><i>İzinlerin bu güncellemede korunur.</i></p>
+<h3>English</h3>
+<p>islo. 2.5.4 brings a redesigned Settings: light, simple and easy to find your way around.</p>
+<h4>New</h4>
+<ul>
+<li><b>Light Settings:</b> White cards and short rows. The notch and the welcome guide stay dark.</li>
+<li><b>Every feature in the sidebar:</b> Notifications, Calendar, Timer, Weather and the rest each have their own entry. Features that are off show a grey icon; ones waiting for a permission show a warning.</li>
+<li><b>Simpler feature pages:</b> The switch on top, then only that feature's options. Long explanations became a short note at the bottom.</li>
+<li><b>One "Restore defaults":</b> The two buttons became one, and it asks first.</li>
+</ul>
+<h4>Changes</h4>
+<ul>
+<li><b>Home layout:</b> The "In front" choice is gone; Home always opens in the balanced layout.</li>
+<li><b>Shortcuts tab:</b> Its settings button opens the Shortcuts page directly.</li>
+</ul>
+<p><i>Your permissions are kept with this update.</i></p>
+]]></description>
+            <pubDate>Sat, 07 Nov 2026 14:40:25 +0300</pubDate>
+            <link>https://github.com/OzdmrYsn/islo</link>
+            <sparkle:version>29</sparkle:version>
+            <sparkle:shortVersionString>2.5.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.4/islo-2.5.4.zip" length="6319979" type="application/octet-stream" sparkle:edSignature="Sz+tvo5WfREhfD7T24S0mTk5IK+N79SjqNnUrzzhpCwv1PaZ+0CgaEp/RUPMdoBwdQuFVKfBUwbROBovAhgFCw=="/>
+        </item>
+        <item>
             <title>2.5.3</title>
             <description><![CDATA[
 <style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
@@ -69,44 +111,6 @@
             <sparkle:shortVersionString>2.5.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.2/islo-2.5.2.zip" length="6596336" type="application/octet-stream" sparkle:edSignature="Qf29IZh4/0vOYe3MiFTNpb0EYvQ/K2f5NPcS5lj9MucTaLMsaCvuSbIXJMOQtchVD2TLlvRBbPrh3QzVtLo0Cg=="/>
-        </item>
-        <item>
-            <title>2.5.1</title>
-            <description><![CDATA[
-<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
-<h3>Türkçe</h3>
-<p>islo. 2.5.1 ile otomatik temizleme kendi sekmelerine taşındı ve Pano'ya da geldi.</p>
-<h4>İyileştirmeler</h4>
-<ul>
-<li><b>Sekmesinde otomatik temizleme:</b> Bildirimler, Dosya Rafı ve Pano sekmelerinde filtrelerin yanında küçük bir saat düğmesi var. Tıklayınca Kapalı, 1 saat, 1 gün ya da 1 hafta seçersin; Ayarlar daha sade.</li>
-<li><b>Pano da temizlenir:</b> Kopyaladığın metinler de seçtiğin süre sonunda geçmişten kalkar.</li>
-<li><b>Her öğe kendi süresiyle:</b> Süre her bildirim, dosya ve metin için kendi geliş zamanından sayılır; eskiler kalkar, yeniler kalır.</li>
-</ul>
-<h4>Düzeltmeler</h4>
-<ul>
-<li><b>Dosya Rafı:</b> islo. açılırken o an ulaşamadığı dosyaları (çıkarılmış bir disk, henüz izin verilmemiş bir klasör) artık raftan silmiyor; yalnızca gizliyor.</li>
-</ul>
-<p><i>İzinlerin bu güncellemede korunur.</i></p>
-<h3>English</h3>
-<p>islo. 2.5.1 moves automatic clearing into each tab and brings it to the Clipboard.</p>
-<h4>Improvements</h4>
-<ul>
-<li><b>Auto-clear in its tab:</b> Notifications, File Shelf and Clipboard have a small clock next to their filters. Click it to pick Off, 1 hour, 1 day or 1 week; Settings stays tidy.</li>
-<li><b>Clipboard clears too:</b> Copied text also leaves the history after the time you choose.</li>
-<li><b>Each item on its own clock:</b> The time counts from when each notification, file or text arrived; older ones go, newer ones stay.</li>
-</ul>
-<h4>Fixes</h4>
-<ul>
-<li><b>File Shelf:</b> Files islo. can't reach at launch (an unplugged drive, a folder macOS hasn't allowed yet) are no longer taken off the shelf; they're just hidden.</li>
-</ul>
-<p><i>Your permissions are kept with this update.</i></p>
-]]></description>
-            <pubDate>Fri, 06 Nov 2026 03:05:46 +0300</pubDate>
-            <link>https://github.com/OzdmrYsn/islo</link>
-            <sparkle:version>26</sparkle:version>
-            <sparkle:shortVersionString>2.5.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.1/islo-2.5.1.zip" length="6562332" type="application/octet-stream" sparkle:edSignature="+mchnwtGzn71UeD6kYS6K9K0XmBLHT2Tce6TaWlnlBhpeY3x8ytp0AbKcKMUBRMfKdRr/oneGd/TMHkqEti5BQ=="/>
         </item>
     </channel>
 </rss>
