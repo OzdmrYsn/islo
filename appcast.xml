@@ -3,6 +3,70 @@
     <channel>
         <title>islo.</title>
         <item>
+            <title>2.5.5</title>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
+<h3>Türkçe</h3>
+<p>islo. 2.5.5 ile Ayarlar canlandı, ana sayfa işe yarar hâle geldi ve islo. çok daha az pil harcıyor.</p>
+<h4>Yenilikler</h4>
+<ul>
+<li><b>Canlı Ayarlar:</b> Ayarlar penceresinin üstünde artık bir çentik var ve neyi ayarlıyorsan onu oynuyor: bildirim, geri sayım, ses çubuğu, renk ve ton. Bir özelliği kapatınca çentik de kapanıyor.</li>
+<li><b>Altı sekme:</b> Uzun sol menü gitti. Uyarılar ve Araçlar sekmelerinde bütün özellikler anahtarlarıyla tek bakışta; birine tıklayınca seçenekleri yanında açılıyor.</li>
+<li><b>Ana sayfada "Şimdi":</b> Tarih kartının yerinde o an önemli olan iki şey var: çalışan zamanlayıcı, yaklaşan toplantı, süren indirme, okunmamış bildirim. Sakin bir günde saatlik hava durumu görünür.</li>
+<li><b>Hızlı eylemler:</b> Ana sayfadan tek tıkla zamanlayıcıyı başlat, Mac'i uyanık tut, ekran görüntüsü al ya da ekranı uyut.</li>
+<li><b>Pano anahtarı:</b> Pano geçmişinin Ayarlar'da kendi sayfası var; kapatınca islo. panoyu hiç okumaz.</li>
+</ul>
+<h4>İyileştirmeler</h4>
+<ul>
+<li><b>Daha az pil:</b> Müzik çalarken işlemci kullanımı yaklaşık %12'den %2'ye, boştayken %3'ten %1'in altına indi.</li>
+<li><b>Sekme çubuğu:</b> Uzun sekme adları ana sayfa düğmesini artık çentiğin köşesine itmiyor.</li>
+</ul>
+<h4>Düzeltmeler</h4>
+<ul>
+<li>Şarkı değişimi bildirimi artık Ayarlar'daki süre kadar kalıyor ve Command Echo kapalıyken de çalışıyor.</li>
+<li>⌥, ⇧ veya ⌃ ile basılan ses ve parlaklık tuşları yeniden macOS'e gidiyor; çentik tam ekranda gizliyken macOS'in kendi göstergesi görünüyor.</li>
+<li>Ekran takıp çıkardıktan sonra macOS bildirimi çentikle birlikte görünmüyor.</li>
+<li>Music ya da Spotify kapatılırken yeniden açılmıyor.</li>
+<li>İzinler sayfası Spotify'ın durumunu doğru gösteriyor.</li>
+<li>"İzin eksik" uyarısı yalnızca gerçekten gereken izinler için çıkıyor.</li>
+<li>Parola yöneticilerinin "geçici" olarak işaretlediği kopyalar pano geçmişine alınmıyor.</li>
+</ul>
+<p><i>İzinlerin bu güncellemede korunur.</i></p>
+<h3>English</h3>
+<p>islo. 2.5.5 brings Settings to life, makes Home useful and uses far less battery.</p>
+<h4>New</h4>
+<ul>
+<li><b>Live Settings:</b> The Settings window now has a notch at the top that acts out whatever you are setting: a notification, a countdown, the volume bar, colour and tone. Switch a feature off and the notch goes quiet too.</li>
+<li><b>Six tabs:</b> The long sidebar is gone. Alerts and Tools show every feature with its switch at a glance; click one and its options open beside it.</li>
+<li><b>"Now" on Home:</b> In place of the date card, the two things that matter right now: a running timer, a meeting coming up, a download, an unread notification. On a quiet day you get the hourly forecast.</li>
+<li><b>Quick actions:</b> From Home, one click starts the timer, keeps the Mac awake, takes a screenshot or puts the display to sleep.</li>
+<li><b>Clipboard switch:</b> Clipboard history has its own page in Settings; switched off, islo. doesn't read the clipboard at all.</li>
+</ul>
+<h4>Improvements</h4>
+<ul>
+<li><b>Less battery:</b> CPU use fell from about 12% to 2% while music plays, and from 3% to under 1% at rest.</li>
+<li><b>Tab row:</b> Long tab names no longer push the Home button into the notch's corner.</li>
+</ul>
+<h4>Fixes</h4>
+<ul>
+<li>The track-change notice now stays as long as Settings says, and works with Command Echo off.</li>
+<li>Volume and brightness keys pressed with ⌥, ⇧ or ⌃ go to macOS again; while the notch hides over a full-screen app, macOS shows its own indicator.</li>
+<li>After plugging or unplugging a display, the macOS banner no longer shows alongside the notch.</li>
+<li>Music and Spotify are no longer reopened as they quit.</li>
+<li>The Permissions page shows Spotify's state correctly.</li>
+<li>The "Permission missing" warning only appears for permissions that are actually needed.</li>
+<li>Copies that password managers mark as transient stay out of clipboard history.</li>
+</ul>
+<p><i>Your permissions are kept with this update.</i></p>
+]]></description>
+            <pubDate>Wed, 11 Nov 2026 19:00:38 +0300</pubDate>
+            <link>https://github.com/OzdmrYsn/islo</link>
+            <sparkle:version>30</sparkle:version>
+            <sparkle:shortVersionString>2.5.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.5/islo-2.5.5.zip" length="6837695" type="application/octet-stream" sparkle:edSignature="C9TBEI5wa76zgu7Ut2hfCj+qcnx4bdCRVTVSwq6C9BMl0vYv+jPq8Mm/ky6RLP1HD9xBedvtNAx028OEA5pbBA=="/>
+        </item>
+        <item>
             <title>2.5.4</title>
             <description><![CDATA[
 <style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
@@ -71,46 +135,6 @@
             <sparkle:shortVersionString>2.5.3</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.3/islo-2.5.3.zip" length="6406170" type="application/octet-stream" sparkle:edSignature="CsqeQIVDV35WugZLu87VmZuKmfFuZoqYV0iTIOu3tJVplnZVzRLCHdHokNpG38Lxdoq6gizBjO+hTH/Y3kvPAg=="/>
-        </item>
-        <item>
-            <title>2.5.2</title>
-            <description><![CDATA[
-<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
-<h3>Türkçe</h3>
-<p>islo. 2.5.2 ile WhatsApp mesajlarına çentikten yanıt verebilirsin.</p>
-<h4>Düzeltmeler</h4>
-<ul>
-<li><b>WhatsApp'tan yanıt:</b> WhatsApp bildirimlerinde "Yanıtla" artık çentikte çıkıyor; cevabını çentikte yazıp Return'e basman yeterli. Önceden macOS'un kendi yanıt kutusu yanda açılıyordu.</li>
-<li><b>Vazgeçince:</b> Yanıttan vazgeçtiğinde yanıt kutusu kapanır, bildirim silinmez.</li>
-<li><b>WhatsApp simgesi:</b> Bildirimlerde WhatsApp'ın kendi simgesi görünür; Ayarlar'daki uygulama listesinde de tek bir WhatsApp kalır.</li>
-<li><b>Daha güvenli düğmeler:</b> "Tümünü Sil" gibi silen düğmeler çentikte gösterilmez.</li>
-</ul>
-<h4>İyileştirmeler</h4>
-<ul>
-<li><b>Daha zarif düğmeler:</b> "Yanıtla" ve diğer bildirim düğmeleri ince, hafif haplar oldu; yanıt alanı ve Gönder düğmesi de onlarla uyumlu.</li>
-</ul>
-<p><i>İzinlerin bu güncellemede korunur.</i></p>
-<h3>English</h3>
-<p>islo. 2.5.2 lets you reply to WhatsApp messages from the notch.</p>
-<h4>Fixes</h4>
-<ul>
-<li><b>Reply to WhatsApp:</b> "Reply" now shows in the notch for WhatsApp notifications; type your answer there and press Return. macOS's own reply box used to open at the side instead.</li>
-<li><b>When you cancel:</b> Cancelling a reply closes the reply box and keeps the notification.</li>
-<li><b>WhatsApp's icon:</b> Notifications show WhatsApp's own icon, and Settings lists WhatsApp just once.</li>
-<li><b>Safer buttons:</b> Buttons that delete, like "Delete All", never show in the notch.</li>
-</ul>
-<h4>Improvements</h4>
-<ul>
-<li><b>Lighter buttons:</b> "Reply" and the other notification buttons are slim, light pills; the reply field and Send match them.</li>
-</ul>
-<p><i>Your permissions are kept with this update.</i></p>
-]]></description>
-            <pubDate>Fri, 06 Nov 2026 12:09:36 +0300</pubDate>
-            <link>https://github.com/OzdmrYsn/islo</link>
-            <sparkle:version>27</sparkle:version>
-            <sparkle:shortVersionString>2.5.2</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.2/islo-2.5.2.zip" length="6596336" type="application/octet-stream" sparkle:edSignature="Qf29IZh4/0vOYe3MiFTNpb0EYvQ/K2f5NPcS5lj9MucTaLMsaCvuSbIXJMOQtchVD2TLlvRBbPrh3QzVtLo0Cg=="/>
         </item>
     </channel>
 </rss>
