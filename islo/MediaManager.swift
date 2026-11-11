@@ -88,8 +88,12 @@ private enum AppleScriptBridgeError: LocalizedError {
 /// Serializes AppleScript work away from the main actor. Only Sendable value
 /// types leave this actor; NSAppleScript and NSAppleEventDescriptor stay inside.
 private actor AppleScriptBridge {
+    /// The scripts that run on every poll, compiled once. Compiling is most
+    /// of what a poll costs.
+    private var compiledScripts: [String: NSAppleScript] = [:]
+
     func snapshot(for source: MediaSource) throws -> MediaSnapshot {
-        let descriptor = try execute(scriptForSnapshot(source))
+        let descriptor = try execute(scriptForSnapshot(source), reusable: true)
         guard descriptor.numberOfItems >= 10 else {
             throw AppleScriptBridgeError.invalidResponse
         }
@@ -175,6 +179,7 @@ private actor AppleScriptBridge {
 
         _ = try execute(
             """
+            if not (application id "\(applicationIdentifier)" is running) then return
             tell application id "\(applicationIdentifier)"
                 \(commandText)
             end tell
@@ -187,7 +192,8 @@ private actor AppleScriptBridge {
             """
             use scripting additions
             return output volume of (get volume settings)
-            """
+            """,
+            reusable: true
         )
         return min(max(descriptor.doubleValue / 100, 0), 1)
     }
@@ -235,9 +241,16 @@ private actor AppleScriptBridge {
         return data
     }
 
-    private func execute(_ source: String) throws -> NSAppleEventDescriptor {
-        guard let script = NSAppleScript(source: source) else {
-            throw AppleScriptBridgeError.couldNotCreateScript
+    private func execute(_ source: String, reusable: Bool = false) throws -> NSAppleEventDescriptor {
+        let script: NSAppleScript
+        if reusable, let compiled = compiledScripts[source] {
+            script = compiled
+        } else {
+            guard let created = NSAppleScript(source: source) else {
+                throw AppleScriptBridgeError.couldNotCreateScript
+            }
+            script = created
+            if reusable { compiledScripts[source] = created }
         }
 
         var errorInfo: NSDictionary?
@@ -274,6 +287,8 @@ private actor AppleScriptBridge {
         switch source {
         case .appleMusic:
             return """
+            if not (application id "com.apple.Music" is running) then ¬
+                return {"", "", "", "stopped", 0, 0, "", "", false, "off"}
             tell application id "com.apple.Music"
                 set stateText to (player state as text)
                 try
@@ -324,6 +339,8 @@ private actor AppleScriptBridge {
 
         case .spotify:
             return """
+            if not (application id "com.spotify.client" is running) then ¬
+                return {"", "", "", "stopped", 0, 0, "", "", false, "off"}
             tell application id "com.spotify.client"
                 set stateText to (player state as text)
                 try
@@ -430,9 +447,19 @@ final class MediaManager: ObservableObject {
         observePlayerNotifications()
 
         monitorTask = Task { [weak self] in
+            var ticksSinceSnapshot = 0
             while !Task.isCancelled {
                 guard let self else { return }
-                await self.refresh()
+                // A paused or absent player announces when it starts again
+                // (see observePlayerNotifications), so it only needs an
+                // occasional look; the volume is cheap and read every tick.
+                ticksSinceSnapshot += 1
+                if self.isPlaying || ticksSinceSnapshot >= 5 {
+                    ticksSinceSnapshot = 0
+                    await self.refresh()
+                } else {
+                    await self.refreshVolume()
+                }
 
                 do {
                     try await Task<Never, Never>.sleep(
@@ -507,13 +534,7 @@ final class MediaManager: ObservableObject {
             }
         }
 
-        if volumeWriteTask == nil {
-            do {
-                volume = try await bridge.systemVolume()
-            } catch {
-                lastError = readableMessage(for: error)
-            }
-        }
+        await refreshVolume()
 
         let runningPlayers = runningMediaSources()
         guard !runningPlayers.isEmpty else {
@@ -574,6 +595,22 @@ final class MediaManager: ObservableObject {
         } else if let latestError {
             resetMediaState()
             lastError = readableMessage(for: latestError)
+        }
+    }
+
+    /// The output volume, straight from CoreAudio; AppleScript only for
+    /// outputs CoreAudio can't read.
+    private func refreshVolume() async {
+        guard volumeWriteTask == nil else { return }
+        if let current = SystemAudioOutput.volume() {
+            if abs(current - volume) > 0.004 { volume = current }
+            return
+        }
+        do {
+            let current = try await bridge.systemVolume()
+            if current != volume { volume = current }
+        } catch {
+            lastError = readableMessage(for: error)
         }
     }
 
@@ -723,16 +760,19 @@ final class MediaManager: ObservableObject {
             snapshot.trackIdentifier
         ].joined(separator: "|")
 
-        source = snapshot.source
-        trackName = snapshot.trackName
-        artistName = snapshot.artistName
-        albumName = snapshot.albumName
+        // Only what changed is published: an unchanged poll must not make
+        // every view that watches the player draw again.
+        if source != snapshot.source { source = snapshot.source }
+        if trackName != snapshot.trackName { trackName = snapshot.trackName }
+        if artistName != snapshot.artistName { artistName = snapshot.artistName }
+        if albumName != snapshot.albumName { albumName = snapshot.albumName }
         trackIdentifier = snapshot.trackIdentifier
-        isPlaying = snapshot.isPlaying
-        playbackPosition = min(snapshot.position, max(snapshot.duration, 0))
-        duration = snapshot.duration
-        isShuffleEnabled = snapshot.isShuffleEnabled
-        repeatMode = snapshot.repeatMode
+        if isPlaying != snapshot.isPlaying { isPlaying = snapshot.isPlaying }
+        let position = min(snapshot.position, max(snapshot.duration, 0))
+        if playbackPosition != position { playbackPosition = position }
+        if duration != snapshot.duration { duration = snapshot.duration }
+        if isShuffleEnabled != snapshot.isShuffleEnabled { isShuffleEnabled = snapshot.isShuffleEnabled }
+        if repeatMode != snapshot.repeatMode { repeatMode = snapshot.repeatMode }
 
         if !snapshot.trackName.isEmpty, artworkKey != nextArtworkKey {
             trackChangeRevision &+= 1

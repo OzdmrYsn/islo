@@ -320,6 +320,7 @@ final class AppSettings: ObservableObject {
         static let weatherLocation = "dashboard.weather.location"
         static let dashboardKeepAwakeEnabled = "dashboard.keepAwake.enabled"
         static let dashboardFileShelfEnabled = "dashboard.fileShelf.enabled"
+        static let dashboardClipboardEnabled = "dashboard.clipboard.enabled"
         static let dashboardNotificationsEnabled = "dashboard.notifications.enabled"
         static let hideSystemNotificationBanners = "dashboard.notifications.hideSystemBanners"
         static let notificationPreviewStyle = "dashboard.notifications.preview"
@@ -503,6 +504,11 @@ final class AppSettings: ObservableObject {
 
     @Published var dashboardFileShelfEnabled: Bool {
         didSet { defaults.set(dashboardFileShelfEnabled, forKey: Key.dashboardFileShelfEnabled) }
+    }
+
+    /// Off: islo. doesn't read the pasteboard's contents at all.
+    @Published var dashboardClipboardEnabled: Bool {
+        didSet { defaults.set(dashboardClipboardEnabled, forKey: Key.dashboardClipboardEnabled) }
     }
 
     @Published var dashboardNotificationsEnabled: Bool {
@@ -694,6 +700,11 @@ final class AppSettings: ObservableObject {
             defaults: defaults,
             fallback: true
         )
+        dashboardClipboardEnabled = Self.bool(
+            forKey: Key.dashboardClipboardEnabled,
+            defaults: defaults,
+            fallback: true
+        )
         dashboardNotificationsEnabled = Self.bool(
             forKey: Key.dashboardNotificationsEnabled,
             defaults: defaults,
@@ -777,6 +788,7 @@ final class AppSettings: ObservableObject {
         shortcutsEnabled = true
         dashboardKeepAwakeEnabled = true
         dashboardFileShelfEnabled = true
+        dashboardClipboardEnabled = true
         dashboardNotificationsEnabled = true
         notificationPreviewStyle = .content
         notificationAutoClear = .never
@@ -834,7 +846,7 @@ final class AppSettings: ObservableObject {
     /// Permissions that are missing and break a feature (not ones macOS
     /// simply hasn't asked about yet).
     var missingPermissionCount: Int {
-        (isAccessibilityTrusted ? 0 : 1)
+        (isAccessibilityTrusted || !(dashboardCommandEchoEnabled || dashboardNotificationsEnabled) ? 0 : 1)
             + automationStates.values.filter { $0 == .missing }.count
             + folderStates.values.filter { $0 == .missing }.count
             + (calendarEnabled && CalendarManager.shared.authorization == .missing ? 1 : 0)
@@ -957,7 +969,14 @@ final class AppSettings: ObservableObject {
             if previous == .missing {
                 Self.resetPermission(service: "AppleEvents")
             }
-            let state = Self.automationState(for: target, askUser: true)
+            // A player that leaves macOS's query unanswered is asked with
+            // a real Apple event, which brings up the same prompt.
+            Self.unresponsiveLock.lock()
+            let isUnresponsive = Self.unresponsiveTargets.contains(target)
+            Self.unresponsiveLock.unlock()
+            let state = isUnresponsive
+                ? Self.scriptedAutomationState(for: target, timeout: 120)
+                : Self.automationState(for: target, askUser: true)
             DispatchQueue.main.async { [weak self] in
                 self?.refreshPermissionState()
                 if state == .missing { self?.openAutomationSettings() }
@@ -1002,13 +1021,72 @@ final class AppSettings: ObservableObject {
         DispatchQueue.global(qos: .utility).async {
             var states: [AutomationTarget: PermissionState] = [:]
             for target in AutomationTarget.allCases {
-                states[target] = Self.automationState(for: target, askUser: false)
+                states[target] = Self.passiveAutomationState(for: target)
             }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 isCheckingAutomation = false
                 if states != automationStates { automationStates = states }
             }
+        }
+    }
+
+    /// Targets whose permission query never came back (see below).
+    nonisolated(unsafe) private static var unresponsiveTargets = Set<AutomationTarget>()
+    nonisolated private static let unresponsiveLock = NSLock()
+
+    /// The state without asking the user. macOS's own query never returns
+    /// for some players (Spotify leaves it unanswered), which used to stall
+    /// every later check; it gets a moment, then a plain Apple event to the
+    /// player answers instead.
+    nonisolated private static func passiveAutomationState(for target: AutomationTarget) -> PermissionState {
+        guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: target.rawValue) != nil else {
+            return .appNotInstalled
+        }
+        // macOS only answers for an app that is running.
+        guard !NSRunningApplication.runningApplications(withBundleIdentifier: target.rawValue).isEmpty else {
+            return .appClosed
+        }
+
+        unresponsiveLock.lock()
+        let isKnownUnresponsive = unresponsiveTargets.contains(target)
+        unresponsiveLock.unlock()
+
+        if !isKnownUnresponsive {
+            let finished = DispatchSemaphore(value: 0)
+            let box = PermissionStateBox()
+            Thread.detachNewThread {
+                box.set(automationState(for: target, askUser: false))
+                finished.signal()
+            }
+            if finished.wait(timeout: .now() + 1.5) == .success, let state = box.get() {
+                return state
+            }
+            unresponsiveLock.lock()
+            unresponsiveTargets.insert(target)
+            unresponsiveLock.unlock()
+        }
+        return scriptedAutomationState(for: target)
+    }
+
+    /// Sends the player a harmless Apple event and reads the outcome.
+    nonisolated private static func scriptedAutomationState(
+        for target: AutomationTarget,
+        timeout: Int = 3
+    ) -> PermissionState {
+        let source = """
+        with timeout of \(timeout) seconds
+            tell application id "\(target.rawValue)" to get name
+        end timeout
+        """
+        guard let script = NSAppleScript(source: source) else { return .appClosed }
+        var errorInfo: NSDictionary?
+        script.executeAndReturnError(&errorInfo)
+        guard let errorInfo else { return .granted }
+        switch errorInfo[NSAppleScript.errorNumber] as? Int {
+        case -1743: return .missing
+        case -1744: return .notAsked
+        default: return .appClosed
         }
     }
 
@@ -1070,5 +1148,20 @@ final class AppSettings: ObservableObject {
         _ status: SMAppService.Status
     ) -> Bool {
         status == .enabled || status == .requiresApproval
+    }
+}
+
+/// Carries a result out of a helper thread that may never finish.
+private final class PermissionStateBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: PermissionState?
+
+    func set(_ newValue: PermissionState) {
+        lock.lock(); value = newValue; lock.unlock()
+    }
+
+    func get() -> PermissionState? {
+        lock.lock(); defer { lock.unlock() }
+        return value
     }
 }

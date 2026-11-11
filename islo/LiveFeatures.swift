@@ -576,9 +576,12 @@ final class PrivacyMonitor: ObservableObject {
         if enabled {
             guard timer == nil else { return }
             poll()
-            timer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+            let timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
                 Task { @MainActor in self?.poll() }
             }
+            // Lets macOS line the wake-up with others.
+            timer.tolerance = 0.5
+            self.timer = timer
         } else {
             timer?.invalidate()
             timer = nil

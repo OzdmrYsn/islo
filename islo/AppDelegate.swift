@@ -57,6 +57,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         self.mediaManager = mediaManager
         notchWindowController = windowController
+        windowController.onVisibilityChange = { [weak self] visible in
+            self?.systemHUDInterceptor.isNotchVisible = visible
+        }
 
         windowController.showWindow(nil)
         mediaManager.startMonitoring()
@@ -66,7 +69,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         #if DEBUG
         installDebugHooks()
         #endif
-        clipboardHistoryManager.startMonitoring()
+        settings.$dashboardClipboardEnabled
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] enabled in self?.clipboardHistoryManager.setEnabled(enabled) }
+            .store(in: &cancellables)
         fileShelfManager.startDragMonitoring()
 
         if !settings.onboardingCompleted {
@@ -421,6 +428,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] enabled in
                 self?.systemHUDInterceptor.setEnabled(enabled)
+                self?.commandEchoManager.setSystemPollingEnabled(enabled)
             }
             .store(in: &cancellables)
 
@@ -646,6 +654,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 isAllDay: false, joinURL: URL(string: "https://meet.google.com/abc-defg-hij"),
                 color: .systemPurple
             ))
+        case let command where command.hasPrefix("section:"):
+            NotificationCenter.default.post(name: .isloExpand, object: nil)
+            NotificationCenter.default.post(
+                name: Notification.Name("com.ozdmrysn.islo.debug.section"),
+                object: String(command.dropFirst("section:".count))
+            )
+        case "timer-toggle":
+            focusTimerManager.toggle()
+        case "timer-reset":
+            focusTimerManager.reset()
+        case "trackchange":
+            commandEchoManager.showTrackChanged("Deneme şarkısı", direction: nil)
         case let command where command.hasPrefix("settings"):
             // "settings" or "settings:<page>", e.g. "settings:features".
             let page = command.split(separator: ":").dropFirst().first.map(String.init)

@@ -21,6 +21,8 @@ final class FloatingNotchWindowController: NSWindowController {
     private let fileShelfManager: FileShelfManager
     private let clipboardHistoryManager: ClipboardHistoryManager
     private let notificationMonitor: NotificationMonitor
+    /// Told whenever the notch goes off or back on screen.
+    var onVisibilityChange: ((Bool) -> Void)?
     private var layout: NotchLayout
     private var currentSize: CGSize
     private var visibilityTask: Task<Void, Never>?
@@ -276,9 +278,11 @@ final class FloatingNotchWindowController: NSWindowController {
             )
             window.orderOut(nil)
             notificationMonitor.setNotchVisible(false)
+            onVisibilityChange?(false)
         } else {
             window.orderFrontRegardless()
             notificationMonitor.setNotchVisible(true)
+            onVisibilityChange?(true)
         }
     }
 

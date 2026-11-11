@@ -419,6 +419,15 @@ struct DynamicNotchView: View {
         .onReceive(mediaManager.$trackChangeRevision.dropFirst()) { _ in
             showTrackChangePreviewIfNeeded()
         }
+        #if DEBUG
+        .onReceive(
+            NotificationCenter.default.publisher(for: Notification.Name("com.ozdmrysn.islo.debug.section"))
+        ) { note in
+            if let name = note.object as? String, let section = DashboardSection(rawValue: name) {
+                dashboardSection = section
+            }
+        }
+        #endif
         // Next run-loop pass, once the artist and album have caught up too.
         .onReceive(mediaManager.$trackName.removeDuplicates().receive(on: RunLoop.main)) { _ in
             if showsLyrics { loadLyrics() }
@@ -478,6 +487,9 @@ struct DynamicNotchView: View {
         .onChange(of: settings.dashboardFileShelfEnabled) { enabled in
             if !enabled, dashboardSection == .shelf { dashboardSection = .home }
         }
+        .onChange(of: settings.dashboardClipboardEnabled) { enabled in
+            if !enabled, dashboardSection == .clipboard { dashboardSection = .home }
+        }
         .onChange(of: settings.dashboardNotificationsEnabled) { enabled in
             if !enabled, dashboardSection == .notifications { dashboardSection = .home }
         }
@@ -491,6 +503,8 @@ struct DynamicNotchView: View {
         .onChange(of: presentation) { state in
             notificationMonitor.setNotchReady(state == .idle)
         }
+        // A rebuilt view (display change) starts closed without a change.
+        .onAppear { notificationMonitor.setNotchReady(presentation == .idle) }
         .onReceive(notificationMonitor.$announcementRevision.dropFirst()) { _ in
             guard settings.dashboardNotificationsEnabled,
                   let latest = notificationMonitor.latest else { return }
@@ -647,7 +661,7 @@ struct DynamicNotchView: View {
     private var privacyAppBadge: some View {
         let usage = privacyMonitor.usage
         if let name = usage.appName,
-           let icon = NSWorkspace.shared.runningApplications.first(where: { ($0.localizedName ?? "").withoutDirectionMarks == name.withoutDirectionMarks })?.icon {
+           let icon = ViewCache.runningAppIcon(named: name) {
             Image(nsImage: icon)
                 .resizable()
                 .interpolation(.high)
@@ -752,8 +766,8 @@ struct DynamicNotchView: View {
                 .contentTransition(.numericText(countsDown: true))
                 .animation(.easeOut(duration: 0.2), value: focusTimerManager.remainingSeconds)
         case .music, .none:
-            PlaybackWaveform(isPlaying: mediaManager.isPlaying)
-                .foregroundStyle(playbackIndicatorColor)
+            // Nothing is drawn while the notch hides; don't animate either.
+            PlaybackWaveform(isPlaying: mediaManager.isPlaying && !isSurfaceConcealed, color: playbackIndicatorColor)
         }
     }
 
@@ -1006,36 +1020,300 @@ struct DynamicNotchView: View {
         }
     }
 
+    /// One thin line for the date, then what is going on right now, then
+    /// the things worth one click. No placeholders: a quiet day shows the
+    /// forecast instead of empty cards.
     private var dashboardSidePane: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(alignment: .center) {
-                    Text(dashboardWeekday(context.date).uppercased())
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(formatted(context.date, template: "EEE").uppercased())
                         .font(.system(size: 9, weight: .bold))
-                        .tracking(1.2)
+                        .tracking(0.8)
                         .foregroundStyle(Color.red.opacity(0.85))
-                    Spacer(minLength: 6)
-                    weatherChip
-                }
-
-                HStack(alignment: .firstTextBaseline) {
                     Text(dashboardDate(context.date))
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(primaryColor)
-                        .lineLimit(1)
-                    Spacer()
                     Text(dashboardTime(context.date))
-                        .font(.system(size: 13, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(primaryColor.opacity(0.58))
+                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(primaryColor.opacity(0.5))
+                    Spacer(minLength: 4)
+                    weatherChip
+                        .fixedSize()
+                        .layoutPriority(1)
                 }
+                .lineLimit(1)
+                .help(dashboardLongDate(context.date))
 
-                if showsHourlyWeather, let weather = weatherManager.snapshot, !weather.hourly.isEmpty {
-                    hourlyWeatherStrip(weather)
-                } else {
-                    calendarSummaryCards(now: context.date, separatorTitle: localized("Sıradaki", "Up next"))
-                }
+                dashboardNowPane(now: context.date)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+                dashboardQuickActions
             }
         }
+    }
+
+    /// What deserves a look right now, most pressing first.
+    private enum NowItem: Hashable {
+        case timer
+        case event(CalendarEventInfo)
+        case download
+        case notification(CapturedNotification)
+        case weather
+
+        static func == (lhs: NowItem, rhs: NowItem) -> Bool { lhs.key == rhs.key }
+        func hash(into hasher: inout Hasher) { hasher.combine(key) }
+
+        var key: String {
+            switch self {
+            case .timer: "timer"
+            case let .event(event): "event-\(event.id)"
+            case .download: "download"
+            case let .notification(item): "notification-\(item.id)"
+            case .weather: "weather"
+            }
+        }
+    }
+
+    /// Live things first (a running timer, a meeting within the hour, a
+    /// download, an unread notification), then what's merely next.
+    private func nowItems(now: Date) -> [NowItem] {
+        var items: [NowItem] = []
+        let events = settings.calendarEnabled && calendarManager.authorization == .granted
+            ? calendarManager.upcoming.filter { $0.end > now }
+            : []
+        let soon = events.first { $0.isOngoing(at: now) || $0.start.timeIntervalSince(now) <= 3600 }
+
+        if settings.dashboardFocusTimerEnabled,
+           focusTimerManager.isRunning
+            || (focusTimerManager.remainingSeconds > 0
+                && focusTimerManager.remainingSeconds < focusTimerManager.totalSeconds) {
+            items.append(.timer)
+        }
+        if let soon { items.append(.event(soon)) }
+        if !downloadMonitor.active.isEmpty { items.append(.download) }
+        if settings.dashboardNotificationsEnabled, notificationMonitor.unreadCount > 0,
+           let latest = notificationMonitor.items.first {
+            items.append(.notification(latest))
+        }
+        if let next = events.first(where: { $0.id != soon?.id }) { items.append(.event(next)) }
+        if settings.weatherEnabled, weatherManager.snapshot != nil { items.append(.weather) }
+        return items
+    }
+
+    @ViewBuilder
+    private func dashboardNowPane(now: Date) -> some View {
+        let items = nowItems(now: now)
+        let weather = settings.weatherEnabled ? weatherManager.snapshot : nil
+        // Nothing live: the forecast gets the whole pane.
+        let isQuiet = items.allSatisfy { if case .weather = $0 { true } else { false } }
+
+        if let weather, !weather.hourly.isEmpty, showsHourlyWeather || isQuiet {
+            hourlyWeatherStrip(weather)
+        } else if items.isEmpty {
+            VStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 17, weight: .light))
+                Text(localized("Şu an her şey sakin", "All quiet right now"))
+                    .font(.system(size: 10, weight: .medium))
+            }
+            .foregroundStyle(primaryColor.opacity(0.42))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack(spacing: 6) {
+                ForEach(Array(items.prefix(2)), id: \.self) { item in
+                    nowRow(item, now: now)
+                }
+            }
+            .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder
+    private func nowRow(_ item: NowItem, now: Date) -> some View {
+        switch item {
+        case .timer:
+            let label = focusTimerManager.mode == .timer
+                ? localized("Zamanlayıcı", "Timer")
+                : (focusTimerManager.isBreak ? localized("Mola", "Break") : localized("Odak", "Focus"))
+            nowRowCard(
+                title: focusTimerManager.formattedTime,
+                subtitle: focusTimerManager.isRunning ? label : label + localized(" · duraklatıldı", " · paused"),
+                monospaced: true,
+                help: localized("Zamanlayıcıyı aç", "Open the timer"),
+                action: { selectDashboardSection(.timer) },
+                leading: { timerMiniRing }
+            )
+        case let .event(event):
+            eventCard(event, now: now)
+        case .download:
+            let count = downloadMonitor.active.count
+            let percent = percentText(Int((downloadMonitor.overallFraction * 100).rounded()))
+            nowRowCard(
+                title: count > 1
+                    ? localized("\(count) dosya iniyor", "\(count) downloads")
+                    : (downloadMonitor.active.first?.name ?? ""),
+                subtitle: localized("İndiriliyor · \(percent)", "Downloading · \(percent)"),
+                help: localized("İndirilenler'i aç", "Open Downloads"),
+                action: {
+                    if let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+                        NSWorkspace.shared.open(folder)
+                    }
+                },
+                leading: { downloadMiniRing }
+            )
+        case let .notification(item):
+            let unread = notificationMonitor.unreadCount
+            nowRowCard(
+                title: item.headline,
+                subtitle: unread > 1
+                    ? localized("\(item.appName) · \(unread) yeni", "\(item.appName) · \(unread) new")
+                    : (item.detail.isEmpty ? item.appName : "\(item.appName) · \(item.detail)"),
+                help: localized("Bildirimleri aç", "Open notifications"),
+                action: { selectDashboardSection(.notifications) },
+                leading: { notificationAppIcon(item) }
+            )
+        case .weather:
+            if let weather = weatherManager.snapshot {
+                nowRowCard(
+                    title: WeatherManager.summary(code: weather.code, turkish: settings.language == .turkish),
+                    subtitle: localized(
+                        "En yüksek \(Int(weather.high.rounded()))° · En düşük \(Int(weather.low.rounded()))°",
+                        "High \(Int(weather.high.rounded()))° · Low \(Int(weather.low.rounded()))°"
+                    ),
+                    help: localized("Saatlik tahmin", "Hourly forecast"),
+                    action: { withAnimation(.easeInOut(duration: 0.2)) { showsHourlyWeather = true } },
+                    leading: {
+                        Image(systemName: WeatherManager.symbolName(code: weather.code, isDay: weather.isDay))
+                            .symbolRenderingMode(.multicolor)
+                            .font(.system(size: 15))
+                    }
+                )
+            }
+        }
+    }
+
+    /// The same row as the calendar's event card, with any leading mark.
+    private func nowRowCard<Leading: View>(
+        title: String,
+        subtitle: String,
+        monospaced: Bool = false,
+        help: String,
+        action: @escaping () -> Void,
+        @ViewBuilder leading: () -> Leading
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                leading()
+                    .frame(width: 26, height: 26)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(monospaced
+                            ? .system(size: 12, weight: .bold).monospacedDigit()
+                            : .system(size: 10, weight: .semibold))
+                        .foregroundStyle(primaryColor)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(.system(size: 8))
+                        .foregroundStyle(primaryColor.opacity(0.48))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(primaryColor.opacity(0.3))
+            }
+            .padding(.horizontal, 9)
+            .frame(height: 39)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(primaryColor.opacity(0.075))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    /// One click each: start or pause the timer, keep the Mac awake, take a
+    /// screenshot, put the display to sleep.
+    private var dashboardQuickActions: some View {
+        HStack(spacing: 6) {
+            if settings.dashboardFocusTimerEnabled {
+                quickActionButton(
+                    focusTimerManager.isRunning ? "pause.fill" : "timer",
+                    label: focusTimerManager.isRunning
+                        ? localized("Zamanlayıcıyı duraklat", "Pause the timer")
+                        : localized("Zamanlayıcıyı başlat (\(focusTimerManager.formattedTime))", "Start the timer (\(focusTimerManager.formattedTime))"),
+                    isOn: focusTimerManager.isRunning,
+                    action: focusTimerManager.toggle
+                )
+            }
+            if settings.dashboardKeepAwakeEnabled {
+                quickActionButton(
+                    "cup.and.saucer.fill",
+                    label: keepAwakeManager.isActive
+                        ? localized("Uyanık Tut açık · kapat", "Keep Awake is on · turn off")
+                        : localized("Mac'i uyanık tut", "Keep the Mac awake"),
+                    isOn: keepAwakeManager.isActive,
+                    action: keepAwakeManager.toggle
+                )
+            }
+            quickActionButton(
+                "camera.viewfinder",
+                label: localized("Ekran görüntüsü al", "Take a screenshot"),
+                action: openScreenshotTool
+            )
+            quickActionButton(
+                "moon.fill",
+                label: localized("Ekranı uyut", "Sleep the display"),
+                action: sleepDisplay
+            )
+        }
+    }
+
+    private func quickActionButton(
+        _ symbol: String,
+        label: String,
+        isOn: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        return Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(isOn ? Color.white : primaryColor.opacity(0.8))
+                .frame(maxWidth: .infinity, minHeight: 30, maxHeight: 30)
+                .background(shape.fill(isOn ? accent : primaryColor.opacity(0.075)))
+                .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .help(label)
+        .accessibilityLabel(Text(label))
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+
+    /// macOS's own capture toolbar (⇧⌘5); the notch gets out of the picture
+    /// first. islo. itself never records the screen.
+    private func openScreenshotTool() {
+        isPinned = false
+        setPresentation(.idle)
+        let tool = URL(fileURLWithPath: "/System/Applications/Utilities/Screenshot.app")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            NSWorkspace.shared.open(tool)
+        }
+    }
+
+    private func sleepDisplay() {
+        isPinned = false
+        setPresentation(.idle)
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+        task.arguments = ["displaysleepnow"]
+        try? task.run()
     }
 
     /// The next hours: time, sky, temperature and the chance of rain.
@@ -1045,10 +1323,6 @@ struct DynamicNotchView: View {
                 Label(rainStartText(rain), systemImage: "umbrella.fill")
                     .font(.system(size: 9.5, weight: .semibold))
                     .foregroundStyle(Color(red: 0.45, green: 0.72, blue: 1))
-            } else {
-                Text(localized("Saatlik", "Hourly"))
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(primaryColor.opacity(0.4))
             }
             HStack(spacing: 0) {
                 ForEach(Array(weather.hourly.enumerated()), id: \.element.id) { index, hour in
@@ -1070,7 +1344,7 @@ struct DynamicNotchView: View {
                     .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.vertical, 8)
+            .frame(maxHeight: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(primaryColor.opacity(0.075))
@@ -1080,10 +1354,7 @@ struct DynamicNotchView: View {
     }
 
     private func hourLabel(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: settings.language == .turkish ? "tr_TR" : "en_US")
-        formatter.setLocalizedDateFormatFromTemplate(settings.language == .turkish ? "HH" : "ha")
-        return formatter.string(from: date)
+        formatted(date, template: settings.language == .turkish ? "HH" : "ha")
     }
 
     /// Icon, temperature and city; the tooltip has the day's range.
@@ -1106,10 +1377,6 @@ struct DynamicNotchView: View {
                 Text("\(Int(weather.temperature.rounded()))°")
                     .font(.system(size: 11, weight: .semibold).monospacedDigit())
                     .foregroundStyle(primaryColor)
-                Text(weather.locationName)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(primaryColor.opacity(0.5))
-                    .lineLimit(1)
                 if !weather.hourly.isEmpty {
                     Image(systemName: showsHourlyWeather ? "chevron.up" : "chevron.down")
                         .font(.system(size: 7, weight: .bold))
@@ -1120,7 +1387,8 @@ struct DynamicNotchView: View {
             }
             .buttonStyle(.plain)
             .help(
-                WeatherManager.summary(code: weather.code, turkish: settings.language == .turkish)
+                weather.locationName + " · "
+                    + WeatherManager.summary(code: weather.code, turkish: settings.language == .turkish)
                     + localized(" · En yüksek \(Int(weather.high.rounded()))° · En düşük \(Int(weather.low.rounded()))°",
                                 " · High \(Int(weather.high.rounded()))° · Low \(Int(weather.low.rounded()))°")
             )
@@ -1310,10 +1578,10 @@ struct DynamicNotchView: View {
     }
 
     private func formatted(_ date: Date, template: String) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: settings.language == .turkish ? "tr_TR" : "en_US")
-        formatter.setLocalizedDateFormatFromTemplate(template)
-        return formatter.string(from: date)
+        ViewCache.formatter(template + "-" + (settings.language == .turkish ? "tr" : "en")) {
+            $0.locale = Locale(identifier: settings.language == .turkish ? "tr_TR" : "en_US")
+            $0.setLocalizedDateFormatFromTemplate(template)
+        }.string(from: date)
     }
 
     // MARK: Timer
@@ -2005,7 +2273,7 @@ struct DynamicNotchView: View {
                     } else {
                         ZStack {
                             primaryColor.opacity(0.06)
-                            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                            Image(nsImage: ViewCache.fileIcon(path: url.path))
                                 .resizable()
                                 .scaledToFit()
                                 .padding(8)
@@ -2309,8 +2577,8 @@ struct DynamicNotchView: View {
     @ViewBuilder
     private func notificationAppIcon(_ item: CapturedNotification) -> some View {
         if let bundleIdentifier = item.bundleIdentifier,
-           let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+           let icon = ViewCache.appIcon(bundleIdentifier: bundleIdentifier) {
+            Image(nsImage: icon)
                 .resizable()
                 .scaledToFit()
         } else {
@@ -2374,7 +2642,10 @@ struct DynamicNotchView: View {
             if layout.hasCameraHousing {
                 HStack(spacing: 0) {
                     dashboardNavigationLeading
-                        .padding(.trailing, 12)
+                        .padding(.trailing, 8)
+                        // Never into the rounded corner: a long tab name
+                        // falls back to icons instead of pushing Home out.
+                        .padding(.leading, bodyInset + 8)
                         .frame(
                             width: dashboardNotchWingWidth,
                             alignment: .trailing
@@ -2410,12 +2681,12 @@ struct DynamicNotchView: View {
     /// doesn't fit (many tabs, a badge), they fall back to icons only.
     private var dashboardNavigationLeading: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 4) {
+            HStack(spacing: 2) {
                 ForEach(visibleDashboardSections, id: \.self) { section in
                     dashboardNavigationItem(section, showsLabel: true)
                 }
             }
-            HStack(spacing: 4) {
+            HStack(spacing: 2) {
                 ForEach(visibleDashboardSections, id: \.self) { section in
                     dashboardNavigationItem(section, showsLabel: false)
                 }
@@ -2430,7 +2701,8 @@ struct DynamicNotchView: View {
             case .shelf: settings.dashboardFileShelfEnabled
             case .notifications: settings.dashboardNotificationsEnabled
             case .shortcuts: settings.shortcutsEnabled
-            case .home, .calendar, .clipboard: true
+            case .clipboard: settings.dashboardClipboardEnabled
+            case .home, .calendar: true
             }
         }
     }
@@ -2489,8 +2761,8 @@ struct DynamicNotchView: View {
                 }
             }
             .foregroundStyle(isSelected ? primaryColor : primaryColor.opacity(0.5))
-            .padding(.horizontal, isSelected && showsLabel ? 10 : (badge > 0 ? 6 : 0))
-            .frame(minWidth: 25, minHeight: 27)
+            .padding(.horizontal, isSelected && showsLabel ? 9 : (badge > 0 ? 6 : 0))
+            .frame(minWidth: 24, minHeight: 27)
             .background {
                 if isSelected {
                     Capsule()
@@ -2742,9 +3014,7 @@ struct DynamicNotchView: View {
         if mediaManager.hasActiveTrack {
             HStack(spacing: 5) {
                 if mediaManager.isPlaying {
-                    PlaybackWaveform(isPlaying: true)
-                        .scaleEffect(0.55)
-                        .frame(width: 12, height: 10)
+                    PlaybackWaveform(isPlaying: true, color: accent, scale: 0.55)
                 } else {
                     Image(systemName: "pause.fill")
                         .font(.system(size: 7, weight: .bold))
@@ -3591,6 +3861,8 @@ struct DynamicNotchView: View {
         case .rain: isAllowed = settings.weatherEnabled && settings.rainAlertsEnabled
         // The preview replaces the plain "Screenshot captured" echo.
         case .screenshot: isAllowed = settings.dashboardCommandEchoEnabled && !settings.screenshotPreviewEnabled
+        // Its own switch; not tied to the volume/brightness HUD.
+        case .trackChanged: isAllowed = settings.showOnTrackChange
         default: isAllowed = settings.dashboardCommandEchoEnabled
         }
         guard isAllowed, presentation == .idle else { return }
@@ -3598,6 +3870,9 @@ struct DynamicNotchView: View {
         // a finished timer or a device/privacy alert that is showing.
         if isCommandEchoVisible, displayedEcho.isImportant, !incoming.isImportant { return }
         commandEchoTask?.cancel()
+        // A HUD swapped out under the pointer never reports the hover
+        // ending; the new one starts clean so it can dismiss itself.
+        isEchoHovered = false
         displayedEcho = incoming
         displayedEchoRevision &+= 1
         echoActionDone = nil
@@ -3622,7 +3897,7 @@ struct DynamicNotchView: View {
         case .downloadFinished: duration = 6
         case .rain: duration = 7
         case .screenshot: duration = 3.2
-        case .trackChanged: duration = 2.2
+        case .trackChanged: duration = settings.trackChangeDisplayDuration
         default: duration = 1.45
         }
         scheduleEchoHide(after: duration, animation: echoAnimation)
@@ -3684,10 +3959,10 @@ struct DynamicNotchView: View {
     }
 
     private func dashboardLongDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: settings.language == .turkish ? "tr_TR" : "en_US")
-        formatter.dateStyle = .long
-        return formatter.string(from: date)
+        ViewCache.formatter("long-" + (settings.language == .turkish ? "tr" : "en")) {
+            $0.locale = Locale(identifier: settings.language == .turkish ? "tr_TR" : "en_US")
+            $0.dateStyle = .long
+        }.string(from: date)
     }
 
     private func openCalendar() {
@@ -3707,24 +3982,21 @@ struct DynamicNotchView: View {
     }
 
     private func dashboardWeekday(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: settings.language == .turkish ? "tr_TR" : "en_US")
-        formatter.dateFormat = "EEEE"
-        return formatter.string(from: date)
+        ViewCache.formatter("weekday-" + (settings.language == .turkish ? "tr" : "en")) {
+            $0.locale = Locale(identifier: settings.language == .turkish ? "tr_TR" : "en_US")
+            $0.dateFormat = "EEEE"
+        }.string(from: date)
     }
 
     private func dashboardDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: settings.language == .turkish ? "tr_TR" : "en_US")
-        formatter.setLocalizedDateFormatFromTemplate("d MMM")
-        return formatter.string(from: date)
+        formatted(date, template: "d MMM")
     }
 
     private func dashboardTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = .current
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+        ViewCache.formatter("time") {
+            $0.locale = .autoupdatingCurrent
+            $0.timeStyle = .short
+        }.string(from: date)
     }
 
     private var sourceBadge: some View {
@@ -4172,6 +4444,10 @@ struct DynamicNotchView: View {
 
         if newValue == .idle {
             autoClearPicker = nil
+            showsHourlyWeather = false
+            // A drag cut short by closing never reports its end.
+            isInteracting = false
+            isScrubbing = false
             trackChangeTask?.cancel()
             isTemporaryTrackPreview = false
             showsOutputPicker = false
@@ -4186,6 +4462,7 @@ struct DynamicNotchView: View {
         } else {
             // Opening replaces a system-change HUD instead of stretching it.
             commandEchoTask?.cancel()
+            isEchoHovered = false
             if isCommandEchoVisible,
                settings.dashboardNotificationsEnabled,
                case .notification = displayedEcho {
@@ -4765,34 +5042,148 @@ private struct AnimatedPercentText: View, Animatable {
     }
 }
 
+/// Things view bodies ask for again and again: date formatters and app
+/// icons are costly to make and never change while islo. runs.
+@MainActor
+private enum ViewCache {
+    private static var formatters: [String: DateFormatter] = [:]
+    private static var icons = NSCache<NSString, NSImage>()
+
+    static func formatter(_ key: String, configure: (DateFormatter) -> Void) -> DateFormatter {
+        if let formatter = formatters[key] { return formatter }
+        let formatter = DateFormatter()
+        configure(formatter)
+        formatters[key] = formatter
+        return formatter
+    }
+
+    static func appIcon(bundleIdentifier: String) -> NSImage? {
+        let key = "app:\(bundleIdentifier)" as NSString
+        if let icon = icons.object(forKey: key) { return icon }
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+            return nil
+        }
+        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        icons.setObject(icon, forKey: key)
+        return icon
+    }
+
+    static func fileIcon(path: String) -> NSImage {
+        let key = "file:\(path)" as NSString
+        if let icon = icons.object(forKey: key) { return icon }
+        let icon = NSWorkspace.shared.icon(forFile: path)
+        icons.setObject(icon, forKey: key)
+        return icon
+    }
+
+    static func runningAppIcon(named name: String) -> NSImage? {
+        let plain = name.withoutDirectionMarks
+        let key = "running:\(plain)" as NSString
+        if let icon = icons.object(forKey: key) { return icon }
+        guard let icon = NSWorkspace.shared.runningApplications
+            .first(where: { ($0.localizedName ?? "").withoutDirectionMarks == plain })?.icon else {
+            return nil
+        }
+        icons.setObject(icon, forKey: key)
+        return icon
+    }
+}
+
 private struct PlaybackWaveform: View {
     let isPlaying: Bool
+    let color: Color
+    var scale: CGFloat = 1
 
     var body: some View {
-        TimelineView(
-            .animation(
-                minimumInterval: 1.0 / 20.0,
-                paused: !isPlaying
-            )
-        ) { context in
-            let phase = context.date.timeIntervalSinceReferenceDate
+        WaveformLayers(isPlaying: isPlaying, color: NSColor(color), scale: scale)
+            .frame(width: 22 * scale, height: 18 * scale)
+            .accessibilityHidden(true)
+    }
+}
 
-            HStack(alignment: .center, spacing: 2) {
-                ForEach(0..<4, id: \.self) { index in
-                    let wave = (
-                        sin(phase * 7 + Double(index) * 1.35) + 1
-                    ) / 2
+/// Four bars moved by Core Animation. The render server runs the motion,
+/// so a song playing costs islo. nothing per frame; redrawing the bars in
+/// SwiftUI twenty times a second kept a whole core about an eighth busy.
+private struct WaveformLayers: NSViewRepresentable {
+    let isPlaying: Bool
+    let color: NSColor
+    let scale: CGFloat
 
-                    Capsule()
-                        .frame(
-                            width: 2.5,
-                            height: isPlaying
-                                ? 5 + CGFloat(wave) * 10
-                                : 4
-                        )
-                }
+    func makeNSView(context: Context) -> WaveformView { WaveformView(scale: scale) }
+
+    func updateNSView(_ view: WaveformView, context: Context) {
+        view.update(isPlaying: isPlaying, color: color)
+    }
+
+    final class WaveformView: NSView {
+        private let bars: [CALayer] = (0..<4).map { _ in CALayer() }
+        private var isPlaying = false
+        private let scale: CGFloat
+        private var barWidth: CGFloat { 2.5 * scale }
+        private var spacing: CGFloat { 2 * scale }
+        private var restingHeight: CGFloat { 4 * scale }
+
+        init(scale: CGFloat) {
+            self.scale = scale
+            super.init(frame: .zero)
+            wantsLayer = true
+            bars.forEach { bar in
+                bar.cornerRadius = barWidth / 2
+                layer?.addSublayer(bar)
             }
         }
-        .frame(width: 22, height: 18)
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func layout() {
+            super.layout()
+            let total = CGFloat(bars.count) * barWidth + CGFloat(bars.count - 1) * spacing
+            let startX = (bounds.width - total) / 2
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            for (index, bar) in bars.enumerated() {
+                bar.bounds = CGRect(x: 0, y: 0, width: barWidth, height: restingHeight)
+                bar.position = CGPoint(
+                    x: startX + CGFloat(index) * (barWidth + spacing) + barWidth / 2,
+                    y: bounds.midY
+                )
+            }
+            CATransaction.commit()
+        }
+
+        /// A window that comes back on screen has dropped its animations.
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window != nil, isPlaying { startAnimating() }
+        }
+
+        func update(isPlaying: Bool, color: NSColor) {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            bars.forEach { $0.backgroundColor = color.cgColor }
+            CATransaction.commit()
+            guard isPlaying != self.isPlaying else { return }
+            self.isPlaying = isPlaying
+            if isPlaying { startAnimating() } else { bars.forEach { $0.removeAnimation(forKey: "wave") } }
+        }
+
+        private func startAnimating() {
+            for (index, bar) in bars.enumerated() {
+                let wave = CAKeyframeAnimation(keyPath: "bounds.size.height")
+                // One sine sweep, each bar a little behind the last.
+                let steps = 24
+                let offset = Double(index) * 1.35
+                wave.values = (0...steps).map { step in
+                    let phase = Double(step) / Double(steps) * 2 * .pi
+                    return (5 + (sin(phase + offset) + 1) / 2 * 10) * scale
+                }
+                wave.duration = 2 * .pi / 7
+                wave.repeatCount = .infinity
+                wave.calculationMode = .linear
+                wave.isRemovedOnCompletion = false
+                bar.add(wave, forKey: "wave")
+            }
+        }
     }
 }

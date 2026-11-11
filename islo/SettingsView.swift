@@ -261,14 +261,14 @@ struct ChipPicker<Value: Hashable>: View {
 /// Everything islo. can do that has an on/off switch.
 private enum Feature: String, CaseIterable, Identifiable {
     case notifications, commandEcho, calendar, devices, privacy, screenshots, downloads
-    case timer, shelf, shortcuts, keepAwake, weather, lyrics
+    case timer, shelf, clipboard, shortcuts, keepAwake, weather, lyrics
 
     var id: String { rawValue }
 
     /// Things the notch tells you about on its own.
     static let alerts: [Feature] = [.notifications, .commandEcho, .calendar, .devices, .privacy, .screenshots, .downloads]
     /// Tools that live in the open notch.
-    static let panel: [Feature] = [.timer, .shelf, .shortcuts, .keepAwake, .weather, .lyrics]
+    static let panel: [Feature] = [.timer, .shelf, .clipboard, .shortcuts, .keepAwake, .weather, .lyrics]
 
     var symbol: String {
         switch self {
@@ -281,6 +281,7 @@ private enum Feature: String, CaseIterable, Identifiable {
         case .downloads: "arrow.down.circle.fill"
         case .timer: "timer"
         case .shelf: "tray.full.fill"
+        case .clipboard: "list.clipboard.fill"
         case .shortcuts: "bolt.fill"
         case .keepAwake: "cup.and.saucer.fill"
         case .weather: "cloud.sun.fill"
@@ -299,6 +300,7 @@ private enum Feature: String, CaseIterable, Identifiable {
         case .downloads: Tint.mint
         case .timer: Tint.orange
         case .shelf: Tint.blue
+        case .clipboard: Tint.teal
         case .shortcuts: Tint.shortcuts
         case .keepAwake: Tint.coffee
         case .weather: Tint.sky
@@ -314,7 +316,12 @@ private enum FeaturePermission {
     case folder(ProtectedFolder)
 }
 
-/// A page of the Settings window: one per sidebar row.
+/// The tabs under the stage.
+private enum SettingsTab: CaseIterable {
+    case general, appearance, alerts, tools, permissions, about
+}
+
+/// A page of the Settings window.
 private enum SettingsPage: Hashable {
     case general, appearance, permissions, about
     case feature(Feature)
@@ -340,6 +347,11 @@ struct SettingsView: View {
     var router: SettingsRouter?
     var onShowOnboarding: () -> Void = {}
     @State private var selection: SettingsPage = .general
+    /// The feature each list last showed, so its tab reopens there.
+    @State private var lastAlert: Feature = .notifications
+    @State private var lastTool: Feature = .timer
+    /// Pointing at a feature previews it on the stage.
+    @State private var hoveredFeature: Feature?
     @State private var weatherQuery = ""
     @State private var vipDraft = ""
     @State private var weatherResults: [WeatherLocation] = []
@@ -351,21 +363,27 @@ struct SettingsView: View {
     private let p = IsloPalette.light
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar.frame(width: 236)
-            Rectangle().fill(p.line).frame(width: 1)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    currentPage
-                }
-                .padding(.horizontal, 34)
-                .padding(.top, 40)
-                .padding(.bottom, 30)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .scrollIndicators(.never)
-            // Each page starts at the top.
-            .id(selection)
+        VStack(spacing: 0) {
+            SettingsStage(
+                demo: stageDemo,
+                caption: stageCaption,
+                accent: accent,
+                tone: settings.surfaceTone,
+                language: settings.language
+            )
+            .frame(height: 196)
+
+            tabBar
+                // Sits on the stage's lower edge.
+                .offset(y: -21)
+                .padding(.bottom, -21)
+                .zIndex(1)
+
+            pageArea
+        }
+        .onChange(of: selection) { page in
+            guard case .feature(let feature) = page else { return }
+            if Feature.alerts.contains(feature) { lastAlert = feature } else { lastTool = feature }
         }
         .foregroundStyle(p.text)
         .frame(minWidth: 940, maxWidth: .infinity, minHeight: 690, maxHeight: .infinity)
@@ -416,98 +434,226 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Sidebar
+    // MARK: Tabs
 
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable().scaledToFit().frame(width: 32, height: 32)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("islo.").font(.system(size: 17, weight: .bold, design: .rounded))
-                    Text(text("Ayarlar", "Settings")).font(.system(size: 11, weight: .medium)).foregroundStyle(p.muted)
+    private var tab: SettingsTab {
+        switch selection {
+        case .general: .general
+        case .appearance: .appearance
+        case .permissions: .permissions
+        case .about: .about
+        case .feature(let feature): Feature.alerts.contains(feature) ? .alerts : .tools
+        }
+    }
+
+    private func select(_ tab: SettingsTab) {
+        hoveredFeature = nil
+        switch tab {
+        case .general: selection = .general
+        case .appearance: selection = .appearance
+        case .alerts: selection = .feature(lastAlert)
+        case .tools: selection = .feature(lastTool)
+        case .permissions: selection = .permissions
+        case .about: selection = .about
+        }
+    }
+
+    private func title(_ tab: SettingsTab) -> String {
+        switch tab {
+        case .general: text("Genel", "General")
+        case .appearance: text("Görünüm", "Appearance")
+        case .alerts: text("Uyarılar", "Alerts")
+        case .tools: text("Araçlar", "Tools")
+        case .permissions: text("İzinler", "Permissions")
+        case .about: text("Hakkında", "About")
+        }
+    }
+
+    private func symbol(_ tab: SettingsTab) -> String {
+        switch tab {
+        case .general: "gearshape.fill"
+        case .appearance: "paintpalette.fill"
+        case .alerts: "bell.badge.fill"
+        case .tools: "square.grid.2x2.fill"
+        case .permissions: "lock.shield.fill"
+        case .about: "info.circle.fill"
+        }
+    }
+
+    private var tabBar: some View {
+        HStack(spacing: 3) {
+            ForEach(SettingsTab.allCases, id: \.self) { item in
+                let isSelected = tab == item
+                Button { select(item) } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: symbol(item))
+                            .font(.system(size: 11.5, weight: .semibold))
+                        Text(title(item))
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .lineLimit(1)
+                        if item == .permissions, settings.missingPermissionCount > 0 {
+                            Text("\(settings.missingPermissionCount)")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                                .frame(minWidth: 16, minHeight: 16)
+                                .background(Capsule().fill(Color.orange))
+                                .help(text("Eksik izin var", "A permission is missing"))
+                        }
+                    }
+                    .foregroundStyle(isSelected ? onAccent : p.text.opacity(0.78))
+                    .padding(.horizontal, 14)
+                    .frame(height: 34)
+                    .background(Capsule().fill(isSelected ? accent : .clear))
+                    .contentShape(Capsule())
                 }
+                .buttonStyle(.plain)
+                .modifier(NoFocusRing())
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 46)
-            .padding(.bottom, 14)
+        }
+        .padding(4)
+        .background(
+            Capsule()
+                .fill(p.card)
+                .shadow(color: Color.black.opacity(0.16), radius: 14, y: 5)
+        )
+        .overlay(Capsule().strokeBorder(p.line, lineWidth: 1))
+    }
 
+    /// Under the tabs: the two feature tabs pair a list of switches with
+    /// the chosen feature's options; the rest are single pages.
+    @ViewBuilder private var pageArea: some View {
+        switch tab {
+        case .alerts: featurePane(Feature.alerts)
+        case .tools: featurePane(Feature.panel)
+        default:
             ScrollView {
-                VStack(alignment: .leading, spacing: 1) {
-                    sidebarItem(.general)
-                    sidebarItem(.appearance)
-                    sidebarItem(.permissions)
-                    sidebarHeader(text("Çentik haber verir", "The notch tells you"))
-                    ForEach(Feature.alerts) { sidebarItem(.feature($0)) }
-                    sidebarHeader(text("Açılan çentikte", "In the open notch"))
-                    ForEach(Feature.panel) { sidebarItem(.feature($0)) }
-                    Rectangle().fill(p.line).frame(height: 1).padding(.horizontal, 8).padding(.vertical, 8)
-                    sidebarItem(.about)
+                VStack(alignment: .leading, spacing: 20) {
+                    currentPage
                 }
-                .padding(.horizontal, 10)
-                .padding(.bottom, 14)
+                .frame(maxWidth: 700, alignment: .leading)
+                .padding(.horizontal, 34)
+                .padding(.top, 24)
+                .padding(.bottom, 30)
+                .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.never)
+            // Each page starts at the top.
+            .id(selection)
         }
-        .frame(maxHeight: .infinity, alignment: .top)
-        .background(p.sidebar)
     }
 
-    private func sidebarHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(p.faint)
-            .padding(.leading, 9)
-            .padding(.top, 14)
-            .padding(.bottom, 4)
-    }
+    private func featurePane(_ features: [Feature]) -> some View {
+        HStack(alignment: .top, spacing: 20) {
+            featureList(features)
+                .frame(width: 286)
+                .padding(.top, 24)
 
-    private func sidebarItem(_ page: SettingsPage) -> some View {
-        let isSelected = selection == page
-        return Button { selection = page } label: {
-            HStack(spacing: 9) {
-                IconTile(symbol: symbol(page), colors: colors(page), size: 22, isOn: isLit(page))
-                Text(title(page))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(isSelected ? onAccent : p.text)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                sidebarBadge(page, isSelected: isSelected)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    currentPage
+                }
+                .padding(.top, 24)
+                .padding(.bottom, 30)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 7)
-            .frame(height: 30)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? accent : .clear)
-            )
-            // A clear background isn't hit-testable; make the whole row
-            // clickable, not just its text.
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .scrollIndicators(.never)
+            .id(selection)
         }
-        .buttonStyle(.plain)
-        // The focus ring on the first row read as a second selection.
-        .modifier(NoFocusRing())
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .padding(.horizontal, 30)
     }
 
-    @ViewBuilder
-    private func sidebarBadge(_ page: SettingsPage, isSelected: Bool) -> some View {
-        switch page {
-        case .permissions where settings.missingPermissionCount > 0:
-            Text("\(settings.missingPermissionCount)")
-                .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-                .frame(minWidth: 17, minHeight: 17)
-                .background(Capsule().fill(Color.orange))
-                .help(text("Eksik izin var", "A permission is missing"))
-        case .feature(let feature) where needsPermission(feature):
-            Image(systemName: "exclamationmark.circle.fill")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(isSelected ? onAccent : Color.orange)
-                .help(text("İzin gerekli", "Needs permission"))
-        default:
-            EmptyView()
+    /// Every feature of the tab with its switch, so the whole set can be
+    /// read and changed at a glance; a click shows that feature's options.
+    private func featureList(_ features: [Feature]) -> some View {
+        VStack(spacing: 2) {
+            ForEach(features) { feature in
+                let isSelected = selection == .feature(feature)
+                let isOn = isEnabled(feature)
+                HStack(spacing: 10) {
+                    IconTile(symbol: feature.symbol, colors: feature.colors, size: 26, isOn: isOn.wrappedValue)
+                    Text(title(feature))
+                        .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    if needsPermission(feature) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.orange)
+                            .help(text("İzin gerekli", "Needs permission"))
+                    }
+                    switchControl(isOn)
+                        .controlSize(.small)
+                        .accessibilityLabel(Text(title(feature)))
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 44)
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(isSelected ? accent.opacity(0.13) : .clear)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .onTapGesture { selection = .feature(feature) }
+                .onHover { inside in
+                    if inside {
+                        hoveredFeature = feature
+                    } else if hoveredFeature == feature {
+                        hoveredFeature = nil
+                    }
+                }
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            }
         }
+        .padding(6)
+        .background(cardBackground)
+    }
+
+    // MARK: Stage
+
+    /// What the notch on the stage acts out: the feature under the pointer,
+    /// else the page that is open, with the settings as they are now.
+    private var stageDemo: StageDemo {
+        if let hoveredFeature, tab == .alerts || tab == .tools { return demo(for: hoveredFeature) }
+        switch selection {
+        case .general: return .music
+        case .appearance: return .dashboard
+        case .permissions: return .permissions(missing: settings.missingPermissionCount)
+        case .about:
+            return .about(version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+        case .feature(let feature): return demo(for: feature)
+        }
+    }
+
+    private func demo(for feature: Feature) -> StageDemo {
+        guard isEnabled(feature).wrappedValue else { return .off }
+        switch feature {
+        case .notifications: return settings.notificationPreviewStyle == .content ? .message : .messageCount
+        case .commandEcho: return .volume
+        case .calendar: return settings.calendarAlertsEnabled ? .meeting : .nextEvent
+        case .devices: return .charging
+        case .privacy: return .privacy
+        case .screenshots: return .screenshot
+        case .downloads: return .download
+        case .timer: return settings.liveTimerInNotch ? .timer : .timerPanel
+        case .shelf: return .shelf
+        case .clipboard: return .clipboard
+        case .shortcuts: return .shortcuts
+        case .keepAwake: return .awake
+        case .weather: return .weather(rain: settings.rainAlertsEnabled)
+        case .lyrics: return .lyrics
+        }
+    }
+
+    private var stageCaption: String {
+        let feature: Feature? = {
+            if let hoveredFeature, tab == .alerts || tab == .tools { return hoveredFeature }
+            if case .feature(let feature) = selection { return feature }
+            return nil
+        }()
+        guard let feature else { return text("Canlı önizleme", "Live preview") }
+        return isEnabled(feature).wrappedValue
+            ? text("Canlı önizleme · \(title(feature))", "Live preview · \(title(feature))")
+            : text("Kapalı · \(title(feature))", "Off · \(title(feature))")
     }
 
     private func title(_ page: SettingsPage) -> String {
@@ -550,8 +696,6 @@ struct SettingsView: View {
 
     private var generalPage: some View {
         VStack(alignment: .leading, spacing: 20) {
-            pageTitle(text("Genel", "General"))
-
             if settings.missingPermissionCount > 0 {
                 noticeCard(
                     message: text("Bazı izinler eksik, bu yüzden bazı özellikler çalışmıyor.", "Some permissions are missing, so some features don't work."),
@@ -639,9 +783,6 @@ struct SettingsView: View {
 
     private var appearancePage: some View {
         VStack(alignment: .leading, spacing: 20) {
-            pageTitle(text("Görünüm", "Appearance"))
-            notchPreview
-
             group(text("Renk", "Colour")) {
                 row(settings.accentTheme.title(language: settings.language)) {
                     AccentSwatchPicker(selection: $settings.accentTheme, language: settings.language)
@@ -656,25 +797,6 @@ struct SettingsView: View {
                     .padding(.vertical, 14)
             }
         }
-    }
-
-    private var notchPreview: some View {
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-        return ZStack(alignment: .top) {
-            LinearGradient(colors: [accent.opacity(0.16), accent.opacity(0.03)], startPoint: .top, endPoint: .bottom)
-            ThemePreviewNotch(accent: accent, tone: settings.surfaceTone, language: settings.language)
-            VStack {
-                Spacer()
-                Text(text("Değişiklikler çentikte anında görünür.", "Changes show in the notch right away."))
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(p.muted)
-                    .padding(.bottom, 12)
-            }
-        }
-        .frame(height: 160)
-        .background(p.card)
-        .clipShape(shape)
-        .overlay(shape.strokeBorder(p.line, lineWidth: 1))
     }
 
     // MARK: Feature pages
@@ -974,6 +1096,7 @@ struct SettingsView: View {
         case .downloads: $settings.downloadsEnabled
         case .timer: $settings.dashboardFocusTimerEnabled
         case .shelf: $settings.dashboardFileShelfEnabled
+        case .clipboard: $settings.dashboardClipboardEnabled
         case .shortcuts: $settings.shortcutsEnabled
         case .keepAwake: $settings.dashboardKeepAwakeEnabled
         case .weather: $settings.weatherEnabled
@@ -1019,6 +1142,7 @@ struct SettingsView: View {
         case .downloads: text("İndirmeler", "Downloads")
         case .timer: text("Zamanlayıcı", "Timer")
         case .shelf: text("Dosya Rafı", "File Shelf")
+        case .clipboard: text("Pano", "Clipboard")
         case .shortcuts: text("Kısayollar", "Shortcuts")
         case .keepAwake: text("Uyanık Tut", "Keep Awake")
         case .weather: text("Hava durumu", "Weather")
@@ -1037,6 +1161,7 @@ struct SettingsView: View {
         case .downloads: text("İndirme ilerlemesi kapalı çentikte bir halkayla.", "Download progress as a ring in the closed notch.")
         case .timer: text("Zamanlayıcı ve Pomodoro, geri sayımı çentikte.", "Timer and Pomodoro, counting down in the notch.")
         case .shelf: text("Dosyaları çentiğe bırak, taşı ya da AirDrop'la.", "Drop files on the notch, move or AirDrop them.")
+        case .clipboard: text("Son kopyaladığın metinler çentikte bir tık uzağında.", "The text you copied recently, one click away in the notch.")
         case .shortcuts: text("Seçtiğin kısayollar çentikte tek tıkla çalışır.", "Your picked shortcuts run in one click.")
         case .keepAwake: text("Mac'in uykuya geçmesini istediğin kadar engeller.", "Keeps your Mac awake as long as you need.")
         case .weather: text("Ana sayfada sıcaklık ve hava durumu.", "Temperature and conditions on Home.")
@@ -1066,6 +1191,8 @@ struct SettingsView: View {
             text("Kadranı çevirerek ya da −/+ ile süreyi kur. Pomodoro modunda odak ve mola turları sırayla ilerler.", "Turn the dial or use −/+ to set the time. Pomodoro mode alternates focus and breaks.")
         case .shelf:
             text("Raftan kaldırmak dosyayı silmez. Otomatik temizleme süresini Raf sekmesinden seçebilirsin.", "Removing a file from the shelf never deletes it. Pick an auto-clear time in the Shelf tab.")
+        case .clipboard:
+            text("Geçmiş yalnızca bellekte tutulur, diske yazılmaz ve islo. kapanınca silinir. Parola yöneticilerinin gizli olarak işaretlediği kopyalar alınmaz; işaretlenmemiş bir parola yine de görünebilir. Otomatik temizleme süresini Pano sekmesinden seçebilirsin.", "History stays in memory only, is never written to disk and is gone when islo. quits. Copies that password managers mark as concealed are skipped; an unmarked password can still show up. Pick an auto-clear time in the Clipboard tab.")
         case .shortcuts:
             text("Kısayollar uygulamasından en fazla 7 kısayol seç; çentikte renkli kutucuklar olarak durur.", "Pick up to 7 shortcuts from the Shortcuts app; they sit in the notch as coloured tiles.")
         case .keepAwake:
@@ -1081,7 +1208,6 @@ struct SettingsView: View {
 
     private var permissionsPage: some View {
         VStack(alignment: .leading, spacing: 20) {
-            pageTitle(text("İzinler", "Permissions"))
             permissionSummary
 
             group(text("Sistem", "System")) {
@@ -1342,13 +1468,6 @@ struct SettingsView: View {
     }
 
     // MARK: Building blocks
-
-    private func pageTitle(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 24, weight: .bold))
-            .tracking(-0.3)
-            .padding(.leading, 2)
-    }
 
     /// A white card of rows, with an optional title above and note below.
     private func group<Content: View>(_ title: String? = nil, footer: String? = nil, @ViewBuilder content: () -> Content) -> some View {
@@ -1826,73 +1945,620 @@ struct SurfaceTonePicker: View {
     }
 }
 
-/// A small open-notch mock that shows the theme colour and tone live.
-private struct ThemePreviewNotch: View {
+
+// MARK: - The stage
+
+/// What the notch at the top of Settings is acting out.
+private enum StageDemo: Hashable {
+    case off, music, dashboard
+    case message, messageCount, volume, meeting, nextEvent, charging, privacy, screenshot, download
+    case timer, timerPanel, shelf, clipboard, shortcuts, awake
+    case weather(rain: Bool)
+    case lyrics
+    case permissions(missing: Int)
+    case about(version: String)
+
+    /// The notch's size, not counting the concave top corners.
+    var size: CGSize {
+        switch self {
+        case .off: CGSize(width: 172, height: 30)
+        case .music, .awake, .privacy: CGSize(width: 262, height: 30)
+        case .messageCount, .charging, .download, .timer: CGSize(width: 318, height: 30)
+        case .volume, .weather, .permissions, .about: CGSize(width: 340, height: 30)
+        case .meeting, .nextEvent: CGSize(width: 404, height: 30)
+        case .message, .lyrics: CGSize(width: 372, height: 88)
+        case .screenshot, .shelf, .clipboard, .shortcuts, .timerPanel: CGSize(width: 404, height: 112)
+        case .dashboard: CGSize(width: 452, height: 124)
+        }
+    }
+
+    var isOpen: Bool { size.height > 30 }
+}
+
+/// The top of a Mac display running islo.: the Settings window's own top
+/// edge is the screen's, so the notch hangs from it and acts out whatever
+/// is being set up below.
+private struct SettingsStage: View {
+    let demo: StageDemo
+    let caption: String
     let accent: Color
     let tone: SurfaceTone
     let language: AppLanguage
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let fillet: CGFloat = 8
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            Color.black
-            LinearGradient(
-                colors: [accent.opacity(tone.tintOpacity), accent.opacity(tone.tintOpacity * 0.35), .black],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .mask {
-                LinearGradient(
-                    stops: [.init(color: .clear, location: 0), .init(color: .clear, location: 0.2), .init(color: .black, location: 0.55)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
+        ZStack(alignment: .top) {
+            wallpaper
+            desktopWindows
+            menuBar
+            notch
+        }
+        .overlay(alignment: .bottomLeading) { captionChip }
+        .clipped()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(caption))
+    }
 
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 6) {
-                    Label(language.value(turkish: "Ana", english: "Home"), systemImage: "house.fill")
-                        .font(.system(size: 10, weight: .semibold))
-                        .padding(.horizontal, 9)
-                        .frame(height: 22)
-                        .background(Capsule().fill(Color.white.opacity(0.16)))
-                    ForEach(["calendar", "timer", "tray.full.fill"], id: \.self) { symbol in
-                        Image(systemName: symbol)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.5))
-                            .frame(width: 22, height: 22)
+    private var wallpaper: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.05, green: 0.06, blue: 0.16), Color(red: 0.1, green: 0.05, blue: 0.2)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            RadialGradient(colors: [accent.opacity(0.8), .clear], center: UnitPoint(x: 0.14, y: 0.1), startRadius: 0, endRadius: 420)
+            RadialGradient(colors: [Color(red: 0.95, green: 0.35, blue: 0.65).opacity(0.5), .clear], center: UnitPoint(x: 0.92, y: 1), startRadius: 0, endRadius: 380)
+            RadialGradient(colors: [Color(red: 0.2, green: 0.8, blue: 1).opacity(0.22), .clear], center: UnitPoint(x: 0.62, y: 0.5), startRadius: 0, endRadius: 280)
+        }
+        .animation(.easeInOut(duration: 0.4), value: accent)
+    }
+
+    private var desktopWindows: some View {
+        HStack(alignment: .top, spacing: 0) {
+            glassWindow.frame(width: 210, height: 150).offset(y: 96)
+            Spacer()
+            glassWindow.frame(width: 190, height: 150).offset(y: 78)
+        }
+        .padding(.horizontal, 64)
+    }
+
+    private var glassWindow: some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(Color.white.opacity(0.07))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+            .overlay(alignment: .topLeading) {
+                HStack(spacing: 5) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        Circle().fill(Color.white.opacity(0.22)).frame(width: 7, height: 7)
                     }
                 }
-                HStack(spacing: 10) {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(accent.opacity(0.85))
-                        .frame(width: 34, height: 34)
-                        .overlay(Image(systemName: "music.note").foregroundStyle(.white))
-                    VStack(alignment: .leading, spacing: 6) {
-                        Capsule().fill(Color.white.opacity(0.85)).frame(width: 96, height: 6)
-                        Capsule().fill(Color.white.opacity(0.35)).frame(width: 64, height: 5)
+                .padding(10)
+            }
+    }
+
+    /// The real window buttons sit at its left end.
+    private var menuBar: some View {
+        HStack(spacing: 14) {
+            Text("islo.").font(.system(size: 12, weight: .bold))
+            Text(language.value(turkish: "Ayarlar", english: "Settings"))
+                .font(.system(size: 12, weight: .medium))
+                .opacity(0.8)
+            Spacer()
+            Image(systemName: "battery.75percent").font(.system(size: 12))
+            Image(systemName: "wifi").font(.system(size: 11, weight: .semibold))
+            TimelineView(.everyMinute) { context in
+                Text(context.date, style: .time).font(.system(size: 12, weight: .medium))
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.leading, 78)
+        .padding(.trailing, 16)
+        .frame(height: 30)
+        .background(Color.black.opacity(0.22))
+    }
+
+    private var notch: some View {
+        let size = demo.size
+        let radius: CGFloat = demo.isOpen ? 24 : 11
+        let shape = SettingsNotchShape(fillet: fillet, bottomRadius: radius)
+        return ZStack(alignment: .top) {
+            shape
+                .fill(Color.white)
+                .blur(radius: 14)
+                .opacity(demo == .off ? 0 : 0.2)
+            shape
+                .fill(Color.black)
+                .overlay {
+                    if demo == .dashboard {
+                        LinearGradient(
+                            colors: [accent.opacity(tone.tintOpacity), accent.opacity(tone.tintOpacity * 0.3), .clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        .mask {
+                            LinearGradient(
+                                stops: [.init(color: .clear, location: 0), .init(color: .clear, location: 0.22), .init(color: .black, location: 0.6)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        }
+                        .clipShape(shape)
                     }
-                    Spacer(minLength: 8)
-                    HStack(alignment: .center, spacing: 2.5) {
-                        ForEach([8.0, 15, 10, 13], id: \.self) { height in
-                            Capsule().fill(accent).frame(width: 2.5, height: height)
+                }
+            StageDemoContent(demo: demo, accent: accent, language: language)
+                .frame(width: size.width, height: size.height)
+                .clipShape(SettingsNotchShape(fillet: 0, bottomRadius: radius))
+                .id(demo)
+                .transition(.opacity.animation(.easeOut(duration: 0.16)))
+        }
+        .frame(width: size.width + fillet * 2, height: size.height)
+        .animation(
+            reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.42, dampingFraction: 0.76),
+            value: demo
+        )
+        .animation(.easeInOut(duration: 0.25), value: tone)
+    }
+
+    private var captionChip: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(demo == .off ? Color.white.opacity(0.4) : Color.green)
+                .frame(width: 6, height: 6)
+            Text(caption)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 24)
+        .background(Capsule().fill(Color.black.opacity(0.32)))
+        .padding(.leading, 18)
+        .padding(.bottom, 16)
+    }
+}
+
+/// The notch outline: concave top corners, straight sides, round bottom.
+private struct SettingsNotchShape: Shape {
+    var fillet: CGFloat
+    var bottomRadius: CGFloat
+
+    var animatableData: CGFloat {
+        get { bottomRadius }
+        set { bottomRadius = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let f = fillet
+        let r = min(bottomRadius, rect.height / 2, (rect.width - 2 * f) / 2)
+        let left = rect.minX + f
+        let right = rect.maxX - f
+        let bottom = rect.maxY
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addQuadCurve(to: CGPoint(x: left, y: rect.minY + f), control: CGPoint(x: left, y: rect.minY))
+        path.addLine(to: CGPoint(x: left, y: bottom - r))
+        path.addQuadCurve(to: CGPoint(x: left + r, y: bottom), control: CGPoint(x: left, y: bottom))
+        path.addLine(to: CGPoint(x: right - r, y: bottom))
+        path.addQuadCurve(to: CGPoint(x: right, y: bottom - r), control: CGPoint(x: right, y: bottom))
+        path.addLine(to: CGPoint(x: right, y: rect.minY + f))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY), control: CGPoint(x: right, y: rect.minY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// What's drawn inside the stage notch for each demo. Closed demos put
+/// their marks in the wings beside the camera; open ones hang below it.
+private struct StageDemoContent: View {
+    let demo: StageDemo
+    let accent: Color
+    let language: AppLanguage
+
+    var body: some View {
+        Group {
+            switch demo {
+            case .off:
+                Color.clear
+            case .music:
+                wings {
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(LinearGradient(colors: [accent, Color(red: 1, green: 0.5, blue: 0.6)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: 18, height: 18)
+                } trailing: {
+                    StageBars(color: accent)
+                }
+            case .awake:
+                wings {
+                    Image(systemName: "cup.and.saucer.fill").foregroundStyle(Color(red: 0.85, green: 0.68, blue: 0.48))
+                } trailing: {
+                    label(t("Uyanık", "Awake"))
+                }
+            case .privacy:
+                wings {
+                    Image(systemName: "video.fill").foregroundStyle(.white.opacity(0.85))
+                } trailing: {
+                    HStack(spacing: 5) {
+                        Circle().fill(Color.green).frame(width: 7, height: 7)
+                        Circle().fill(Color.orange).frame(width: 7, height: 7)
+                    }
+                }
+            case .messageCount:
+                wings {
+                    Image(systemName: "bell.fill").foregroundStyle(accent)
+                } trailing: {
+                    label(t("1 yeni bildirim", "1 new notification"))
+                }
+            case .charging:
+                wings {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bolt.fill").foregroundStyle(Color.green)
+                        label(t("Şarj oluyor", "Charging"))
+                    }
+                } trailing: {
+                    label("%64", tint: .green, digits: true)
+                }
+            case .download:
+                wings {
+                    HStack(spacing: 6) {
+                        ring(0.62, color: .green, symbol: "arrow.down")
+                        label("islo.dmg")
+                    }
+                } trailing: {
+                    label("%62", tint: .green, digits: true)
+                }
+            case .timer:
+                wings {
+                    ring(0.7, color: accent, symbol: "timer")
+                } trailing: {
+                    StageCountdown(color: .white)
+                }
+            case .volume:
+                wings {
+                    Image(systemName: "speaker.wave.2.fill").foregroundStyle(.white.opacity(0.9))
+                } trailing: {
+                    StageLevel(color: .white)
+                }
+            case .weather(let rain):
+                wings {
+                    HStack(spacing: 6) {
+                        Image(systemName: rain ? "cloud.rain.fill" : "cloud.sun.fill").symbolRenderingMode(.multicolor)
+                        label("17°", digits: true)
+                    }
+                } trailing: {
+                    if rain {
+                        label(t("20 dk sonra yağmur", "Rain in 20 min"), tint: Color(red: 0.45, green: 0.72, blue: 1))
+                    } else {
+                        label(t("Parçalı bulutlu", "Partly cloudy"))
+                    }
+                }
+            case .permissions(let missing):
+                wings {
+                    Image(systemName: missing > 0 ? "exclamationmark.shield.fill" : "checkmark.shield.fill")
+                        .foregroundStyle(missing > 0 ? Color.orange : Color.green)
+                } trailing: {
+                    label(missing > 0 ? t("\(missing) izin eksik", "\(missing) missing") : t("Her şey hazır", "All set"))
+                }
+            case .about(let version):
+                wings {
+                    Text("islo.").font(.system(size: 12, weight: .bold, design: .rounded)).foregroundStyle(.white)
+                } trailing: {
+                    label(version, digits: true)
+                }
+            case .meeting:
+                wings {
+                    HStack(spacing: 6) {
+                        Capsule().fill(Color(red: 1, green: 0.36, blue: 0.58)).frame(width: 3, height: 14)
+                        label(t("Tasarım toplantısı", "Design sync"))
+                    }
+                } trailing: {
+                    HStack(spacing: 7) {
+                        label(t("5 dk", "5 min"), digits: true)
+                        Text(t("Katıl", "Join"))
+                            .font(.system(size: 9.5, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .frame(height: 18)
+                            .background(Capsule().fill(Color.green.opacity(0.9)))
+                    }
+                }
+            case .nextEvent:
+                wings {
+                    Image(systemName: "calendar").foregroundStyle(Color(red: 1, green: 0.36, blue: 0.58))
+                } trailing: {
+                    label(t("Sıradaki 14:30", "Next at 2:30 PM"), digits: true)
+                }
+            case .message:
+                below {
+                    HStack(spacing: 11) {
+                        appMark("message.fill", [Color(red: 0.25, green: 0.85, blue: 0.4), Color(red: 0.1, green: 0.65, blue: 0.3)], size: 36)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text("Ahmet").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
+                                Text(t("şimdi", "now")).font(.system(size: 10)).foregroundStyle(.white.opacity(0.4))
+                            }
+                            Text(t("Akşam geliyor musun?", "Coming tonight?"))
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.72))
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+            case .lyrics:
+                below {
+                    HStack(spacing: 11) {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(LinearGradient(colors: [accent, Color(red: 1, green: 0.5, blue: 0.6)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .frame(width: 36, height: 36)
+                            .overlay(Image(systemName: "music.note").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(t("Sözler şarkıyla birlikte akar", "Lyrics move with the song"))
+                                .font(.system(size: 12.5, weight: .semibold))
+                                .foregroundStyle(.white)
+                            Text(t("sıradaki satır burada bekler", "the next line waits here"))
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.35))
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+            case .screenshot:
+                below {
+                    HStack(spacing: 12) {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(LinearGradient(colors: [accent.opacity(0.9), Color(red: 0.95, green: 0.35, blue: 0.65).opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.white.opacity(0.25), lineWidth: 1))
+                            .frame(width: 96, height: 60)
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text(t("Ekran görüntüsü", "Screenshot")).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                            HStack(spacing: 5) {
+                                chip(t("Kopyala", "Copy"), filled: true)
+                                chip(t("Rafa ekle", "Shelf"))
+                                chip(t("Göster", "Show"))
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+            case .shelf:
+                below {
+                    HStack(spacing: 8) {
+                        fileTile("doc.fill", "Rapor.pdf", Color(red: 1, green: 0.4, blue: 0.35))
+                        fileTile("photo.fill", "Kapak.png", Color(red: 0.3, green: 0.75, blue: 1))
+                        fileTile("tablecells.fill", "Bütçe.xlsx", Color(red: 0.25, green: 0.8, blue: 0.5))
+                        fileTile("dot.radiowaves.left.and.right", "AirDrop", accent, dashed: true)
+                    }
+                }
+            case .clipboard:
+                below {
+                    VStack(spacing: 6) {
+                        clipRow("link", "islo.app/indir", "Safari")
+                        clipRow("text.alignleft", t("Toplantı notları, salı 14:30", "Meeting notes, Tue 2:30 PM"), t("Notlar", "Notes"))
+                    }
+                }
+            case .shortcuts:
+                below {
+                    HStack(spacing: 8) {
+                        shortcutTile(t("Sabah Özeti", "Morning Brief"), Color(red: 0.2, green: 0.72, blue: 0.9))
+                        shortcutTile(t("Mola Ver", "Take a Break"), Color(red: 0.25, green: 0.78, blue: 0.55))
+                        shortcutTile(t("Odak Modu", "Focus Mode"), Color(red: 0.62, green: 0.42, blue: 0.98))
+                    }
+                }
+            case .timerPanel:
+                below {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle().stroke(Color.white.opacity(0.14), lineWidth: 5)
+                            Circle().trim(from: 0, to: 0.7).stroke(accent, style: StrokeStyle(lineWidth: 5, lineCap: .round)).rotationEffect(.degrees(-90))
+                            StageCountdown(color: .white, size: 12)
+                        }
+                        .frame(width: 60, height: 60)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("Pomodoro").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
+                            Text(t("Odak · 25 dk, mola · 5 dk", "Focus 25 min, break 5 min"))
+                                .font(.system(size: 11))
+                                .foregroundStyle(.white.opacity(0.5))
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+            case .dashboard:
+                below(top: 34) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 6) {
+                            Label(t("Ana", "Home"), systemImage: "house.fill")
+                                .font(.system(size: 10, weight: .semibold))
+                                .padding(.horizontal, 9)
+                                .frame(height: 22)
+                                .background(Capsule().fill(Color.white.opacity(0.16)))
+                            ForEach(["bell.fill", "calendar", "timer", "tray.full.fill"], id: \.self) { symbol in
+                                Image(systemName: symbol)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.5))
+                                    .frame(width: 22, height: 22)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        HStack(spacing: 10) {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(accent.opacity(0.85))
+                                .frame(width: 34, height: 34)
+                                .overlay(Image(systemName: "music.note").foregroundStyle(.white))
+                            VStack(alignment: .leading, spacing: 6) {
+                                Capsule().fill(Color.white.opacity(0.85)).frame(width: 110, height: 6)
+                                Capsule().fill(Color.white.opacity(0.35)).frame(width: 70, height: 5)
+                            }
+                            Spacer(minLength: 8)
+                            StageBars(color: accent)
+                            ring(0.68, color: accent, symbol: nil)
                         }
                     }
-                    Circle()
-                        .trim(from: 0, to: 0.68)
-                        .stroke(accent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                        .frame(width: 22, height: 22)
+                    .foregroundStyle(.white)
                 }
             }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 16)
-            .padding(.top, 34)
         }
-        .frame(width: 330, height: 118 + 22)
-        // Only the lower corners show; the top runs under the card's edge
-        // like the notch under the display edge.
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .offset(y: -22)
-        .animation(.easeInOut(duration: 0.2), value: tone)
+        .font(.system(size: 11.5, weight: .semibold))
+    }
+
+    private func t(_ turkish: String, _ english: String) -> String {
+        language.value(turkish: turkish, english: english)
+    }
+
+    /// Marks beside the camera housing of a closed notch.
+    private func wings<Leading: View, Trailing: View>(
+        @ViewBuilder _ leading: () -> Leading,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        HStack(spacing: 0) {
+            leading()
+            Spacer(minLength: 0)
+            trailing()
+        }
+        .padding(.horizontal, 13)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Content of an open notch, below the camera band.
+    private func below<Content: View>(top: CGFloat = 30, @ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .padding(.horizontal, 16)
+            .padding(.top, top)
+            .padding(.bottom, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    private func label(_ string: String, tint: Color = .white, digits: Bool = false) -> some View {
+        Text(string)
+            .font(digits ? .system(size: 11.5, weight: .semibold).monospacedDigit() : .system(size: 11.5, weight: .semibold))
+            .foregroundStyle(tint.opacity(0.92))
+            .lineLimit(1)
+            .fixedSize()
+    }
+
+    private func ring(_ fraction: Double, color: Color, symbol: String?) -> some View {
+        ZStack {
+            Circle().stroke(Color.white.opacity(0.16), lineWidth: 2.5)
+            Circle().trim(from: 0, to: fraction).stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .round)).rotationEffect(.degrees(-90))
+            if let symbol {
+                Image(systemName: symbol).font(.system(size: 8, weight: .bold)).foregroundStyle(color)
+            }
+        }
+        .frame(width: 19, height: 19)
+    }
+
+    private func appMark(_ symbol: String, _ colors: [Color], size: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
+            .fill(LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom))
+            .frame(width: size, height: size)
+            .overlay(Image(systemName: symbol).font(.system(size: size * 0.46, weight: .semibold)).foregroundStyle(.white))
+    }
+
+    private func chip(_ title: String, filled: Bool = false) -> some View {
+        Text(title)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(filled ? Color.black : Color.white.opacity(0.85))
+            .padding(.horizontal, 9)
+            .frame(height: 21)
+            .background(Capsule().fill(filled ? Color.white : Color.white.opacity(0.12)))
+            .fixedSize()
+    }
+
+    private func fileTile(_ symbol: String, _ name: String, _ tint: Color, dashed: Bool = false) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 11, style: .continuous)
+        return VStack(spacing: 5) {
+            Image(systemName: symbol).font(.system(size: 17, weight: .semibold)).foregroundStyle(tint)
+            Text(name).font(.system(size: 9.5, weight: .medium)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 60)
+        .background(shape.fill(Color.white.opacity(dashed ? 0 : 0.08)))
+        .overlay(shape.strokeBorder(Color.white.opacity(dashed ? 0.28 : 0), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+    }
+
+    private func clipRow(_ symbol: String, _ value: String, _ source: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol).font(.system(size: 10, weight: .bold)).foregroundStyle(accent).frame(width: 16)
+            Text(value).font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.9)).lineLimit(1)
+            Spacer(minLength: 6)
+            Text(source).font(.system(size: 9.5)).foregroundStyle(.white.opacity(0.4))
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 29)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.white.opacity(0.08)))
+    }
+
+    private func shortcutTile(_ name: String, _ tint: Color) -> some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(LinearGradient(colors: [tint, tint.opacity(0.7)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 26, height: 26)
+                .overlay(Image(systemName: "bolt.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(.white))
+            Text(name).font(.system(size: 10, weight: .semibold)).foregroundStyle(.white).lineLimit(2)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity)
+        .frame(height: 46)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.08)))
+    }
+}
+
+/// Four bars that move like the notch's playback mark.
+private struct StageBars: View {
+    let color: Color
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 20.0)) { context in
+            let phase = context.date.timeIntervalSinceReferenceDate
+            HStack(alignment: .center, spacing: 2.5) {
+                ForEach(0..<4, id: \.self) { index in
+                    let wave = (sin(phase * 5.2 + Double(index) * 1.25) + 1) / 2
+                    Capsule().fill(color).frame(width: 2.5, height: 5 + 10 * wave)
+                }
+            }
+            .frame(height: 16)
+        }
+    }
+}
+
+/// A volume bar that steps up and down, as if the keys were pressed.
+private struct StageLevel: View {
+    let color: Color
+    @State private var level: CGFloat = 0.35
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            Capsule().fill(color.opacity(0.2))
+            Capsule().fill(color).frame(width: 96 * level)
+        }
+        .frame(width: 96, height: 5)
+        .task {
+            let steps: [CGFloat] = [0.5, 0.65, 0.8, 0.65, 0.45, 0.35]
+            var index = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(0.9))
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.22)) { level = steps[index % steps.count] }
+                index += 1
+            }
+        }
+    }
+}
+
+/// A countdown that really counts, restarting when it runs out.
+private struct StageCountdown: View {
+    let color: Color
+    var size: CGFloat = 11.5
+    @State private var start = Date()
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let elapsed = Int(context.date.timeIntervalSince(start)) % (25 * 60)
+            let left = 25 * 60 - 1 - elapsed
+            Text(String(format: "%02d:%02d", left / 60, left % 60))
+                .font(.system(size: size, weight: .semibold).monospacedDigit())
+                .foregroundStyle(color)
+        }
     }
 }
