@@ -3,6 +3,66 @@
     <channel>
         <title>islo.</title>
         <item>
+            <title>2.6.0</title>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
+<h3>Türkçe</h3>
+<p>islo. 2.6.0 ile çentik, kod yazan yapay zekâ ajanlarını da takip ediyor: Claude Code ve Codex işini bitirince haber veriyor, izin istediğinde yanıtı çentikten veriyorsun.</p>
+<h4>Yenilikler</h4>
+<ul>
+<li><b>Ajanlar:</b> Claude Code ya da Codex çalışırken kapalı çentikte küçük bir işaret ve geçen süre görünür. Bitince "Claude bitirdi" der; tıklayınca o terminal ya da editör öne gelir.</li>
+<li><b>İzinleri çentikten ver:</b> Ajan bir komut çalıştırmak için izin istediğinde çentik açılır, komutun tamamını gösterir; İzin ver ya da Reddet'e basman yeter. İstek, yanıtlanana kadar çentikte kalır.</li>
+<li><b>Sorulara çentikten cevap:</b> Ajan sana seçenekli bir soru sorduğunda seçenekler çentikte düğme olarak çıkar.</li>
+<li><b>Ajanlar sekmesi:</b> Açık oturumlar, hangisinin çalıştığı, hangisinin seni beklediği tek yerde.</li>
+<li><b>Kurulum tek tık:</b> Ayarlar › Araçlar › Ajanlar'da "Bağla"ya bas. islo. yalnızca kendi kancasını ekler, diğer araçlarınkine dokunmaz ve her şey Mac'inin içinde kalır.</li>
+<li><b>Yeni sürümü çentik söyler:</b> Güncelleme denetimi artık varsayılan olarak açık; yeni sürüm çıkınca çentik haber verir. "Sormadan kur" ayrı bir seçenek.</li>
+</ul>
+<h4>İyileştirmeler</h4>
+<ul>
+<li><b>Hava durumu:</b> "Kapalı" yerine "Çok bulutlu" yazar; saatlik şeridin üstünde gidişatı söyleyen bir satır var ("Önümüzdeki saatlerde 20° civarında sabit").</li>
+<li><b>İlk açılış dili:</b> Mac'in diline göre Türkçe ya da İngilizce başlar; izin pencereleri de o dilde çıkar.</li>
+<li><b>Kısayollar</b> artık varsayılan olarak kapalı; kısayol seçmiş olanlarda açık kalır.</li>
+</ul>
+<h4>Düzeltmeler</h4>
+<ul>
+<li>Art arda gelen aynı adlı iki şarkıda eski sözler kalmıyor.</li>
+<li>Mac uyurken odak sayacı duraklıyor; kapak kapalıyken dolup seans saymıyor.</li>
+<li>islo.'nun ikinci bir kopyası açılırsa kendiliğinden kapanıyor.</li>
+</ul>
+<p><i>İzinlerin bu güncellemede korunur. Codex, yeni kancayı ilk kez çalıştırmadan önce onay ister: Codex'te /hooks yaz.</i></p>
+<h3>English</h3>
+<p>With islo. 2.6.0 the notch keeps an eye on your coding agents too: Claude Code and Codex tell you when they finish, and you answer their permission requests right in the notch.</p>
+<h4>New</h4>
+<ul>
+<li><b>Agents:</b> While Claude Code or Codex works, the closed notch shows a small mark and the time so far. When it's done it says "Claude finished"; click to bring that terminal or editor forward.</li>
+<li><b>Allow from the notch:</b> When an agent asks to run a command, the notch opens with the whole command; press Allow or Deny. The request stays in the notch until it's answered.</li>
+<li><b>Answer questions in the notch:</b> When an agent asks you a multiple-choice question, the choices appear as buttons.</li>
+<li><b>Agents tab:</b> Open sessions, which one is working and which is waiting for you, in one place.</li>
+<li><b>One-click setup:</b> Press "Connect" in Settings › Tools › Agents. islo. adds only its own hook, leaves other tools' hooks alone, and everything stays on your Mac.</li>
+<li><b>The notch announces new versions:</b> Update checks are now on by default, and the notch tells you when there's a new version. "Install without asking" is a separate switch.</li>
+</ul>
+<h4>Improvements</h4>
+<ul>
+<li><b>Weather:</b> The hourly strip has a line that says where things are heading ("Steady around 20° for the next hours").</li>
+<li><b>First-run language:</b> Starts in Turkish or English to match your Mac; permission prompts follow too.</li>
+<li><b>Shortcuts</b> is now off by default; it stays on for anyone who picked shortcuts.</li>
+</ul>
+<h4>Fixes</h4>
+<ul>
+<li>Two songs in a row with the same title no longer keep the first one's lyrics.</li>
+<li>The focus timer pauses while the Mac sleeps instead of running out with the lid closed.</li>
+<li>A second copy of islo. quits by itself.</li>
+</ul>
+<p><i>Your permissions are kept with this update. Codex asks before it runs a new hook for the first time: type /hooks in Codex.</i></p>
+]]></description>
+            <pubDate>Thu, 12 Nov 2026 12:57:00 +0300</pubDate>
+            <link>https://github.com/OzdmrYsn/islo</link>
+            <sparkle:version>31</sparkle:version>
+            <sparkle:shortVersionString>2.6.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.6.0/islo-2.6.0.zip" length="7438412" type="application/octet-stream" sparkle:edSignature="hhCXU8mzP87Le31HEaZKKKOPb1ufVovUomL/LzL46iEiicTXjwY7plVYkEoZvm4+vLO4YongMnacAIkU7tTYBA=="/>
+        </item>
+        <item>
             <title>2.5.5</title>
             <description><![CDATA[
 <style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
@@ -107,34 +167,6 @@
             <sparkle:shortVersionString>2.5.4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.4/islo-2.5.4.zip" length="6319979" type="application/octet-stream" sparkle:edSignature="Sz+tvo5WfREhfD7T24S0mTk5IK+N79SjqNnUrzzhpCwv1PaZ+0CgaEp/RUPMdoBwdQuFVKfBUwbROBovAhgFCw=="/>
-        </item>
-        <item>
-            <title>2.5.3</title>
-            <description><![CDATA[
-<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
-<h3>Türkçe</h3>
-<p>islo. 2.5.3 ile bildirimler çentikte sade ve güvenilir.</p>
-<h4>Değişiklikler</h4>
-<ul>
-<li><b>Bildirimler yalnızca gösterilir:</b> Çentikteki bildirimlerden "Yanıtla" ve "Okundu olarak işaretle" gibi düğmeler kaldırıldı. macOS'un balonu üzerinden yanıt vermek her uygulamada güvenilir çalışmıyordu; WhatsApp yanıtları boş alıp "Cevabınız gönderilemedi" diyordu. Bildirime tıklayınca bildirim listesi açılır.</li>
-<li><b>Yerinde kalanlar:</b> VIP kişiler altın rengiyle ve daha uzun süre görünür. Hangi uygulamaların çentikte görüneceğini Ayarlar'dan seçersin. WhatsApp kendi simgesiyle görünür.</li>
-</ul>
-<p><i>İzinlerin bu güncellemede korunur.</i></p>
-<h3>English</h3>
-<p>islo. 2.5.3 keeps notifications in the notch simple and dependable.</p>
-<h4>Changes</h4>
-<ul>
-<li><b>Notifications are shown only:</b> Buttons like "Reply" and "Mark as Read" are gone from the notch. Replying through macOS's banner didn't work reliably for every app; WhatsApp received replies empty and said "Your reply couldn't be sent". Clicking a notification opens the list.</li>
-<li><b>Still here:</b> VIPs show in gold and stay longer. You choose which apps show in the notch in Settings. WhatsApp shows with its own icon.</li>
-</ul>
-<p><i>Your permissions are kept with this update.</i></p>
-]]></description>
-            <pubDate>Fri, 06 Nov 2026 14:14:30 +0300</pubDate>
-            <link>https://github.com/OzdmrYsn/islo</link>
-            <sparkle:version>28</sparkle:version>
-            <sparkle:shortVersionString>2.5.3</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.3/islo-2.5.3.zip" length="6406170" type="application/octet-stream" sparkle:edSignature="CsqeQIVDV35WugZLu87VmZuKmfFuZoqYV0iTIOu3tJVplnZVzRLCHdHokNpG38Lxdoq6gizBjO+hTH/Y3kvPAg=="/>
         </item>
     </channel>
 </rss>
