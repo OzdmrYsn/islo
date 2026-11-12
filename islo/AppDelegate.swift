@@ -69,6 +69,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         #if DEBUG
         installDebugHooks()
         #endif
+        AgentHub.shared.onEvent = { [weak self] event in self?.commandEchoManager.showAgent(event) }
+        updateManager.$availableVersion
+            .compactMap { $0 }
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] version in self?.commandEchoManager.showUpdateAvailable(version) }
+            .store(in: &cancellables)
+        settings.$agentsEnabled
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { enabled in AgentHub.shared.setEnabled(enabled) }
+            .store(in: &cancellables)
+        settings.$agentsApproveInNotch
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { enabled in AgentHub.shared.answersPermissions = enabled }
+            .store(in: &cancellables)
+
         settings.$dashboardClipboardEnabled
             .removeDuplicates()
             .receive(on: RunLoop.main)
@@ -664,6 +682,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             focusTimerManager.toggle()
         case "timer-reset":
             focusTimerManager.reset()
+        case let command where command.hasPrefix("agent-home:"):
+            AgentIntegration.homeOverride = URL(fileURLWithPath: String(command.dropFirst("agent-home:".count)))
+        case let command where command.hasPrefix("agent-connect:"):
+            if let source = AgentSource(rawValue: String(command.dropFirst("agent-connect:".count))) { try? AgentIntegration.connect(source) }
+        case let command where command.hasPrefix("agent-disconnect:"):
+            if let source = AgentSource(rawValue: String(command.dropFirst("agent-disconnect:".count))) { try? AgentIntegration.disconnect(source) }
+        case let command where command.hasPrefix("agent:"):
+            AgentHub.shared.debugSimulate(String(command.dropFirst("agent:".count)))
+        case "update":
+            commandEchoManager.showUpdateAvailable("2.6.0")
         case "trackchange":
             commandEchoManager.showTrackChanged("Deneme şarkısı", direction: nil)
         case let command where command.hasPrefix("settings"):

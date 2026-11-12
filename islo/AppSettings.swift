@@ -313,6 +313,8 @@ final class AppSettings: ObservableObject {
         static let hideSystemScreenshotThumbnail = "dashboard.screenshots.hideSystemThumbnail"
         static let downloadsEnabled = "dashboard.downloads.enabled"
         static let shortcutsEnabled = "dashboard.shortcuts.enabled"
+        static let agentsEnabled = "dashboard.agents.enabled"
+        static let agentsApproveInNotch = "dashboard.agents.approveInNotch"
         static let shortcutFavorites = "dashboard.shortcuts.favorites"
         static let focusStartShortcut = "focus.startShortcut"
         static let focusEndShortcut = "focus.endShortcut"
@@ -430,6 +432,16 @@ final class AppSettings: ObservableObject {
     /// The Shortcuts tab.
     @Published var shortcutsEnabled: Bool {
         didSet { defaults.set(shortcutsEnabled, forKey: Key.shortcutsEnabled) }
+    }
+
+    /// Coding agents (Claude Code, Codex) reporting to the notch.
+    @Published var agentsEnabled: Bool {
+        didSet { defaults.set(agentsEnabled, forKey: Key.agentsEnabled) }
+    }
+
+    /// Permission requests can be answered in the notch, not only shown.
+    @Published var agentsApproveInNotch: Bool {
+        didSet { defaults.set(agentsApproveInNotch, forKey: Key.agentsApproveInNotch) }
     }
 
     /// Shortcuts pinned to the tab, in order.
@@ -606,9 +618,10 @@ final class AppSettings: ObservableObject {
         // System/Light/Dark/Liquid Glass choice is gone.
         defaults.removeObject(forKey: Key.theme)
 
+        // Until one is picked: Turkish on a Turkish Mac, English elsewhere.
         language = AppLanguage(
             rawValue: defaults.string(forKey: Key.language) ?? ""
-        ) ?? .turkish
+        ) ?? (Locale.preferredLanguages.first?.hasPrefix("tr") == true ? .turkish : .english)
 
         notchIdleMode = NotchIdleMode(
             rawValue: defaults.string(forKey: Key.notchIdleMode) ?? ""
@@ -682,7 +695,14 @@ final class AppSettings: ObservableObject {
         screenshotPreviewEnabled = Self.bool(forKey: Key.screenshotPreviewEnabled, defaults: defaults, fallback: true)
         hideSystemScreenshotThumbnail = Self.bool(forKey: Key.hideSystemScreenshotThumbnail, defaults: defaults, fallback: true)
         downloadsEnabled = Self.bool(forKey: Key.downloadsEnabled, defaults: defaults, fallback: true)
-        shortcutsEnabled = Self.bool(forKey: Key.shortcutsEnabled, defaults: defaults, fallback: true)
+        // Off until asked for; whoever already picked shortcuts keeps the tab.
+        shortcutsEnabled = Self.bool(
+            forKey: Key.shortcutsEnabled,
+            defaults: defaults,
+            fallback: !(defaults.stringArray(forKey: Key.shortcutFavorites) ?? []).isEmpty
+        )
+        agentsEnabled = Self.bool(forKey: Key.agentsEnabled, defaults: defaults, fallback: true)
+        agentsApproveInNotch = Self.bool(forKey: Key.agentsApproveInNotch, defaults: defaults, fallback: true)
         shortcutFavorites = defaults.stringArray(forKey: Key.shortcutFavorites) ?? []
         focusStartShortcut = defaults.string(forKey: Key.focusStartShortcut)
         focusEndShortcut = defaults.string(forKey: Key.focusEndShortcut)
@@ -785,7 +805,9 @@ final class AppSettings: ObservableObject {
         screenshotPreviewEnabled = true
         hideSystemScreenshotThumbnail = true
         downloadsEnabled = true
-        shortcutsEnabled = true
+        shortcutsEnabled = false
+        agentsEnabled = true
+        agentsApproveInNotch = true
         dashboardKeepAwakeEnabled = true
         dashboardFileShelfEnabled = true
         dashboardClipboardEnabled = true

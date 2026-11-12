@@ -1,6 +1,21 @@
 import SwiftUI
 
+/// An agent's hook runs this same binary with `--agent-hook`; it answers
+/// and exits before any of the app starts.
 @main
+enum IsloMain {
+    static func main() {
+        AgentHookCLI.runIfRequested()
+        // One islo. at a time: a second copy would stack a second notch on
+        // the first and take every volume key twice.
+        let identifier = Bundle.main.bundleIdentifier ?? "com.ozdmrysn.islo"
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: identifier)
+            .filter { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier && !$0.isTerminated }
+        if !others.isEmpty { exit(0) }
+        IsloApp.main()
+    }
+}
+
 struct IsloApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self)
     private var appDelegate

@@ -40,6 +40,11 @@ enum CommandEchoKind: Equatable {
     case trackChanged(String, MediaSkipDirection?)
     case notification(CapturedNotification)
     case rain(RainOutlook)
+    case agentFinished(AgentSession)
+    case agentWaiting(AgentSession)
+    case agentPermission(AgentPermission)
+    /// A new islo. version, by its number.
+    case updateAvailable(String)
 
     var symbolName: String {
         switch self {
@@ -54,6 +59,10 @@ enum CommandEchoKind: Equatable {
         case .trackChanged(_, let direction): direction?.symbolName ?? "music.note"
         case .notification: "bell.fill"
         case .rain: "cloud.rain.fill"
+        case .agentFinished: "checkmark.circle.fill"
+        case .agentWaiting: "hand.raised.fill"
+        case .agentPermission: "lock.shield.fill"
+        case .updateAvailable: "arrow.down.circle.fill"
         case .upcomingEvent: "calendar"
         case .power(let event):
             switch event {
@@ -79,7 +88,7 @@ enum CommandEchoKind: Equatable {
     var isImportant: Bool {
         switch self {
         case .notification, .upcomingEvent, .timerFinished, .headphones, .privacy, .power,
-             .screenshotPreview, .downloadFinished, .rain: true
+             .screenshotPreview, .downloadFinished, .rain, .agentFinished, .agentWaiting, .agentPermission, .updateAvailable: true
         case .volume, .brightness, .copied, .pasted, .screenshot, .capsLock, .mediaSkip, .trackChanged: false
         }
     }
@@ -165,6 +174,18 @@ final class CommandEchoManager: ObservableObject {
 
     func showUpcomingEvent(_ event: CalendarEventInfo) {
         publish(.upcomingEvent(event))
+    }
+
+    func showUpdateAvailable(_ version: String) {
+        publish(.updateAvailable(version))
+    }
+
+    func showAgent(_ event: AgentEvent) {
+        switch event {
+        case .finished(let session): publish(.agentFinished(session))
+        case .waiting(let session): publish(.agentWaiting(session))
+        case .permission(let permission): publish(.agentPermission(permission))
+        }
     }
 
     func showPower(_ event: PowerEvent) {
@@ -1439,6 +1460,16 @@ final class FocusTimerManager: ObservableObject {
         breakMinutes = stored(Key.breakLength, 5, Self.breakRange)
         remainingSeconds = focusMinutes * 60
         loadTodayStats()
+        // A countdown must not run out, and count as a session, while the
+        // lid is closed: sleeping pauses it.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.isRunning else { return }
+                self.pause()
+            }
+        }
     }
 
     var totalSeconds: Int {

@@ -20,6 +20,7 @@ private enum FileDropTarget {
 
 private enum DashboardSection: String, CaseIterable {
     case home
+    case agents
     case notifications
     case calendar
     case timer
@@ -146,6 +147,7 @@ struct DynamicNotchView: View {
     @ObservedObject private var screenshotMonitor = ScreenshotMonitor.shared
     @ObservedObject private var downloadMonitor = DownloadMonitor.shared
     @ObservedObject private var shortcutsManager = ShortcutsManager.shared
+    @ObservedObject private var agentHub = AgentHub.shared
     @AppStorage("dashboard.lyrics.visible") private var showsLyrics = false
     @State private var showsOutputPicker = false
 
@@ -432,6 +434,11 @@ struct DynamicNotchView: View {
         .onReceive(mediaManager.$trackName.removeDuplicates().receive(on: RunLoop.main)) { _ in
             if showsLyrics { loadLyrics() }
         }
+        // Two songs in a row can share a title; the track itself changing
+        // is what counts.
+        .onReceive(mediaManager.$trackChangeRevision.dropFirst().receive(on: RunLoop.main)) { _ in
+            if showsLyrics { loadLyrics() }
+        }
         .onChange(of: settings.lyricsEnabled) { enabled in
             if !enabled { lyricsManager.reset() }
         }
@@ -489,6 +496,16 @@ struct DynamicNotchView: View {
         }
         .onChange(of: settings.dashboardClipboardEnabled) { enabled in
             if !enabled, dashboardSection == .clipboard { dashboardSection = .home }
+        }
+        .onChange(of: settings.agentsEnabled) { enabled in
+            if !enabled, dashboardSection == .agents { dashboardSection = .home }
+        }
+        .onChange(of: isAgentLive) { _ in
+            refreshIdleSurface()
+        }
+        // A request answered in the terminal takes its HUD with it.
+        .onChange(of: agentHub.pending) { pending in
+            if isCommandEchoVisible, case .agentPermission(let shown) = displayedEcho, !pending.contains(shown) { dismissEcho() }
         }
         .onChange(of: settings.dashboardNotificationsEnabled) { enabled in
             if !enabled, dashboardSection == .notifications { dashboardSection = .home }
@@ -602,6 +619,7 @@ struct DynamicNotchView: View {
             trackChangeTask?.cancel()
             isTemporaryTrackPreview = false
             if idleActivity == .timer { dashboardSection = .timer }
+            if idleActivity == .agent { dashboardSection = .agents }
             isPinned = true
             setPresentation(.expanded)
         } label: {
@@ -694,7 +712,13 @@ struct DynamicNotchView: View {
         case music
         case timer
         case download
+        case agent
         case privacy
+    }
+
+    /// An agent is busy, or stopped for the user.
+    private var isAgentLive: Bool {
+        settings.agentsEnabled && (agentHub.workingCount > 0 || agentHub.waitingCount > 0)
     }
 
     private var isDownloadLive: Bool {
@@ -714,6 +738,7 @@ struct DynamicNotchView: View {
     private var idleActivity: IdleActivity {
         if isTimerLive { return .timer }
         if isDownloadLive { return .download }
+        if isAgentLive { return .agent }
         if showsIdleWings { return .music }
         if isPrivacyLive { return .privacy }
         return .none
@@ -726,6 +751,8 @@ struct DynamicNotchView: View {
             timerMiniRing
         case .download:
             downloadMiniRing
+        case .agent:
+            agentMiniMark
         case .privacy:
             PrivacyDots(usage: privacyMonitor.usage, size: 8)
         case .music, .none:
@@ -757,6 +784,8 @@ struct DynamicNotchView: View {
                 .minimumScaleFactor(0.75)
         case .privacy:
             privacyAppBadge
+        case .agent:
+            agentWingStatus
         case .timer:
             Text(focusTimerManager.formattedTime)
                 .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
@@ -868,6 +897,7 @@ struct DynamicNotchView: View {
         Group {
             switch dashboardSection {
             case .home: dashboardHomeSection
+            case .agents: dashboardAgentsSection
             case .notifications: dashboardNotificationsSection
             case .calendar: dashboardCalendarSection
             case .timer: dashboardTimerSection
@@ -1055,6 +1085,8 @@ struct DynamicNotchView: View {
 
     /// What deserves a look right now, most pressing first.
     private enum NowItem: Hashable {
+        case permission(AgentPermission)
+        case agent(AgentSession)
         case timer
         case event(CalendarEventInfo)
         case download
@@ -1066,6 +1098,8 @@ struct DynamicNotchView: View {
 
         var key: String {
             switch self {
+            case let .permission(permission): "permission-\(permission.id)"
+            case let .agent(session): "agent-\(session.id)-\(session.state == .waiting)"
             case .timer: "timer"
             case let .event(event): "event-\(event.id)"
             case .download: "download"
@@ -1084,6 +1118,14 @@ struct DynamicNotchView: View {
             : []
         let soon = events.first { $0.isOngoing(at: now) || $0.start.timeIntervalSince(now) <= 3600 }
 
+        if settings.agentsEnabled {
+            if let permission = agentHub.pending.first {
+                items.append(.permission(permission))
+            } else if let session = agentHub.sessions.first(where: { $0.state == .waiting })
+                ?? agentHub.sessions.first(where: { $0.state == .working }) {
+                items.append(.agent(session))
+            }
+        }
         if settings.dashboardFocusTimerEnabled,
            focusTimerManager.isRunning
             || (focusTimerManager.remainingSeconds > 0
@@ -1132,6 +1174,24 @@ struct DynamicNotchView: View {
     @ViewBuilder
     private func nowRow(_ item: NowItem, now: Date) -> some View {
         switch item {
+        case let .permission(permission):
+            nowRowCard(
+                title: permission.detail.isEmpty ? permission.tool : "\(permission.tool) · \(permission.detail)",
+                subtitle: localized("\(permission.source.name) izin istiyor · \(permission.project)", "\(permission.source.name) asks permission · \(permission.project)"),
+                help: localized("Ajanları aç", "Open agents"),
+                action: { selectDashboardSection(.agents) },
+                leading: { agentGlyph(permission.source, state: .waiting, size: 26) }
+            )
+        case let .agent(session):
+            nowRowCard(
+                title: session.project,
+                subtitle: session.state == .waiting
+                    ? localized("\(session.source.name) seni bekliyor", "\(session.source.name) is waiting for you")
+                    : localized("\(session.source.name) çalışıyor", "\(session.source.name) is working"),
+                help: localized("Ajanları aç", "Open agents"),
+                action: { selectDashboardSection(.agents) },
+                leading: { agentGlyph(session.source, state: session.state, size: 26) }
+            )
         case .timer:
             let label = focusTimerManager.mode == .timer
                 ? localized("Zamanlayıcı", "Timer")
@@ -1323,6 +1383,13 @@ struct DynamicNotchView: View {
                 Label(rainStartText(rain), systemImage: "umbrella.fill")
                     .font(.system(size: 9.5, weight: .semibold))
                     .foregroundStyle(Color(red: 0.45, green: 0.72, blue: 1))
+            } else {
+                // Says what the row of hours adds up to, so six equal
+                // numbers read as a steady evening, not a stuck forecast.
+                Text(hourlyTrendText(weather))
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundStyle(primaryColor.opacity(0.5))
+                    .lineLimit(1)
             }
             HStack(spacing: 0) {
                 ForEach(Array(weather.hourly.enumerated()), id: \.element.id) { index, hour in
@@ -1337,7 +1404,7 @@ struct DynamicNotchView: View {
                         Text("\(Int(hour.temperature.rounded()))°")
                             .font(.system(size: 10.5, weight: .semibold).monospacedDigit())
                             .foregroundStyle(primaryColor)
-                        Text(hour.precipitationChance >= 20 ? "%\(hour.precipitationChance)" : " ")
+                        Text(hour.precipitationChance >= 20 ? percentText(hour.precipitationChance) : " ")
                             .font(.system(size: 8, weight: .semibold).monospacedDigit())
                             .foregroundStyle(Color(red: 0.45, green: 0.72, blue: 1))
                     }
@@ -1351,6 +1418,21 @@ struct DynamicNotchView: View {
             )
         }
         .transition(.opacity)
+    }
+
+    private func hourlyTrendText(_ weather: WeatherSnapshot) -> String {
+        let temperatures = weather.hourly.map(\.temperature)
+        guard let low = temperatures.min(), let high = temperatures.max(), let first = temperatures.first, let last = temperatures.last else { return "" }
+        if high - low < 1.5 {
+            return localized("Önümüzdeki saatlerde \(Int(first.rounded()))° civarında sabit", "Steady around \(Int(first.rounded()))° for the next hours")
+        }
+        if last - first >= 1.5 {
+            return localized("Isınıyor: \(Int(first.rounded()))° → \(Int(last.rounded()))°", "Warming up: \(Int(first.rounded()))° → \(Int(last.rounded()))°")
+        }
+        if first - last >= 1.5 {
+            return localized("Serinliyor: \(Int(first.rounded()))° → \(Int(last.rounded()))°", "Cooling down: \(Int(first.rounded()))° → \(Int(last.rounded()))°")
+        }
+        return localized("\(Int(low.rounded()))° ile \(Int(high.rounded()))° arasında", "Between \(Int(low.rounded()))° and \(Int(high.rounded()))°")
     }
 
     private func hourLabel(_ date: Date) -> String {
@@ -2173,6 +2255,353 @@ struct DynamicNotchView: View {
         )
     }
 
+    // MARK: Agents
+
+    private var dashboardAgentsSection: some View {
+        HStack(spacing: 14) {
+            dashboardCard {
+                VStack(alignment: .leading, spacing: 0) {
+                    sectionLabel(localized("Ajanlar", "Agents"))
+                    Spacer(minLength: 6)
+                    Text("\(agentHub.workingCount)")
+                        .font(.system(size: 44, weight: .bold, design: .rounded))
+                        .foregroundStyle(primaryColor)
+                    Text(localized("çalışıyor", "working"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(primaryColor.opacity(0.6))
+                    Spacer(minLength: 8)
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(agentHub.waitingCount > 0 ? Color.orange : primaryColor.opacity(0.25))
+                            .frame(width: 7, height: 7)
+                        Text(agentHub.waitingCount > 0
+                             ? localized("\(agentHub.waitingCount) tanesi seni bekliyor", "\(agentHub.waitingCount) waiting for you")
+                             : localized("Bekleyen yok", "None waiting"))
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(agentHub.waitingCount > 0 ? Color.orange : primaryColor.opacity(0.5))
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .frame(width: 190)
+
+            dashboardCard {
+                if agentHub.sessions.isEmpty {
+                    VStack(spacing: 9) {
+                        Image(systemName: "terminal")
+                            .font(.system(size: 24, weight: .light))
+                            .foregroundStyle(accent)
+                        Text(localized("Claude Code ya da Codex'te bir iş başlat.", "Start something in Claude Code or Codex."))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(primaryColor)
+                        Text(localized("Bitince haber verir, izin isterse buradan yanıtlarsın.", "It tells you when it's done, and you answer its permission requests here."))
+                            .font(.system(size: 10))
+                            .foregroundStyle(primaryColor.opacity(0.5))
+                            .multilineTextAlignment(.center)
+                        shortcutsPillButton(localized("Bağlantıyı kur", "Connect"), filled: true) {
+                            NotificationCenter.default.post(name: .isloShowSettings, object: nil, userInfo: ["feature": "agents"])
+                        }
+                        .padding(.top, 2)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            sectionLabel(localized("Oturumlar", "Sessions"))
+                            Spacer()
+                            if agentHub.sessions.contains(where: { $0.state == .finished || $0.state == .idle }) {
+                                roundIconButton("xmark", label: localized("Bitenleri kaldır", "Remove finished"), size: 22) {
+                                    withAnimation(.easeOut(duration: 0.18)) { agentHub.clearFinished() }
+                                }
+                            }
+                        }
+                        ScrollView {
+                            VStack(spacing: 6) {
+                                ForEach(agentHub.pending) { permission in
+                                    agentPermissionRow(permission)
+                                }
+                                ForEach(agentHub.sessions) { session in
+                                    agentSessionRow(session)
+                                }
+                            }
+                        }
+                        .scrollIndicators(.never)
+                    }
+                }
+            }
+        }
+    }
+
+    private func agentSessionRow(_ session: AgentSession) -> some View {
+        Button {
+            agentHub.focus(sessionID: session.id)
+        } label: {
+            HStack(spacing: 10) {
+                agentGlyph(session.source, state: session.state, size: 28)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(session.project)
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundStyle(primaryColor)
+                            .lineLimit(1)
+                        Text(session.source.name)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(primaryColor.opacity(0.4))
+                    }
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text(agentStateText(session, now: context.date))
+                            .font(.system(size: 9.5, weight: .medium).monospacedDigit())
+                            .foregroundStyle(session.state == .waiting ? Color.orange : primaryColor.opacity(0.55))
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.up.forward")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(primaryColor.opacity(0.3))
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 44)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(primaryColor.opacity(0.07)))
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .help(session.cwd)
+    }
+
+    private func agentPermissionRow(_ permission: AgentPermission) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 7) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.orange)
+                Text(localized("\(permission.source.name) izin istiyor · \(permission.project)", "\(permission.source.name) asks permission · \(permission.project)"))
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(primaryColor)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            agentCommandText(permission)
+            HStack(spacing: 6) {
+                agentAnswerButtons(permission)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(10)
+        .background(shape.fill(Color.orange.opacity(0.1)))
+        .overlay(shape.strokeBorder(Color.orange.opacity(0.35), lineWidth: 0.8))
+    }
+
+    /// The whole of what would run, so "Allow" is never a blind click.
+    private func agentCommandText(_ permission: AgentPermission) -> some View {
+        (Text(permission.tool + (permission.detail.isEmpty ? "" : "  "))
+            .font(.system(size: 10, weight: .bold))
+            .foregroundColor(.white.opacity(0.6))
+         + Text(permission.detail)
+            .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+            .foregroundColor(.white.opacity(0.92)))
+            .lineLimit(3)
+            .truncationMode(.middle)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help(permission.detail)
+    }
+
+    @ViewBuilder
+    private func agentAnswerButtons(_ permission: AgentPermission) -> some View {
+        Button {
+            agentHub.resolve(permission, allow: true)
+            if isCommandEchoVisible { dismissEcho() }
+        } label: {
+            Text(localized("İzin ver", "Allow"))
+                .font(.system(size: 10.5, weight: .bold))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 13)
+                .frame(height: 23)
+                .background(Capsule().fill(Color.white))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        Button {
+            agentHub.resolve(permission, allow: false)
+            if isCommandEchoVisible { dismissEcho() }
+        } label: {
+            Text(localized("Reddet", "Deny"))
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .frame(height: 23)
+                .background(Capsule().fill(Color.white.opacity(0.14)))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        Button {
+            agentHub.focus(sessionID: permission.sessionID)
+            if isCommandEchoVisible { dismissEcho() }
+        } label: {
+            Text(localized("Terminalde aç", "Open terminal"))
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.75))
+                .padding(.horizontal, 10)
+                .frame(height: 23)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func agentStateText(_ session: AgentSession, now: Date) -> String {
+        let elapsed = max(0, Int(now.timeIntervalSince(session.since)))
+        let clock = String(format: "%02d:%02d", elapsed / 60, elapsed % 60)
+        switch session.state {
+        case .working: return localized("Çalışıyor · \(clock)", "Working · \(clock)")
+        case .waiting: return localized("Seni bekliyor", "Waiting for you") + (session.note.isEmpty ? "" : " · \(session.note)")
+        case .finished: return localized("Bitti · \(relativeTime(session.since))", "Finished · \(relativeTime(session.since))") + (session.note.isEmpty ? "" : " · \(session.note)")
+        case .idle: return localized("Hazır", "Ready")
+        }
+    }
+
+    /// The agent's mark in a tile whose colour says how it is doing.
+    private func agentGlyph(_ source: AgentSource, state: AgentState, size: CGFloat) -> some View {
+        let tint: Color = state == .waiting ? .orange : (state == .finished ? .green : accent)
+        return Image(systemName: state == .waiting ? "hand.raised.fill" : (state == .finished ? "checkmark" : (source == .claude ? "sparkle" : "chevron.left.forwardslash.chevron.right")))
+            .font(.system(size: size * 0.42, weight: .bold))
+            .foregroundStyle(tint)
+            .frame(width: size, height: size)
+            .background(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous).fill(tint.opacity(0.16)))
+    }
+
+    /// Closed notch, left wing: a pulsing mark while an agent works.
+    private var agentMiniMark: some View {
+        let isWaiting = agentHub.waitingCount > 0
+        return TimelineView(.animation(minimumInterval: 1.0 / 10.0, paused: isWaiting || isSurfaceConcealed)) { context in
+            Image(systemName: isWaiting ? "hand.raised.fill" : "sparkle")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(isWaiting ? Color.orange : accent)
+                .opacity(isWaiting ? 1 : 0.5 + 0.5 * abs(sin(context.date.timeIntervalSinceReferenceDate * 2.2)))
+                .frame(width: 20, height: 20)
+        }
+    }
+
+    /// Closed notch, right wing: how long it has been at it, or that it waits.
+    @ViewBuilder
+    private var agentWingStatus: some View {
+        if agentHub.waitingCount > 0 {
+            Text(localized("Bekliyor", "Waiting"))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.orange)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        } else if let session = agentHub.sessions.first(where: { $0.state == .working }) {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let elapsed = max(0, Int(context.date.timeIntervalSince(session.since)))
+                Text(String(format: "%02d:%02d", elapsed / 60, elapsed % 60))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(Color.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+        }
+    }
+
+    /// "Finished" and "waiting": who, which project, and a way to it.
+    private func agentHUD(_ session: AgentSession, isWaiting: Bool) -> some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: isWaiting ? "hand.raised.fill" : "checkmark.circle.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(isWaiting ? Color.orange : Color.green)
+                    .id(displayedEchoRevision)
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(commandEchoTitle)
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                    Text(session.project)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: layout.hasCameraHousing ? commandEchoWingWidth : .infinity, alignment: .leading)
+
+            if layout.hasCameraHousing {
+                Color.clear.frame(width: layout.cameraHousingWidth).accessibilityHidden(true)
+            }
+
+            HStack(spacing: 6) {
+                if !session.note.isEmpty {
+                    Text(session.note)
+                        .font(.system(size: 9.5, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                Spacer(minLength: 0)
+                Text(localized("Aç", "Open"))
+                    .font(.system(size: 10.5, weight: .bold))
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 12)
+                    .frame(height: 22)
+                    .background(Capsule().fill(Color.white))
+            }
+            .frame(maxWidth: layout.hasCameraHousing ? commandEchoWingWidth : .infinity, alignment: .trailing)
+        }
+        .padding(.horizontal, 18)
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            agentHub.focus(sessionID: session.id)
+            dismissEcho()
+        }
+        .onHover(perform: echoHoverChanged)
+    }
+
+    /// A permission request: what would run, and the answer.
+    private func agentPermissionHUD(_ permission: AgentPermission) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                HStack(spacing: 7) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color.orange)
+                    Text(commandEchoTitle)
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: layout.hasCameraHousing ? commandEchoWingWidth : .infinity, alignment: .leading)
+                if layout.hasCameraHousing {
+                    Color.clear.frame(width: layout.cameraHousingWidth).accessibilityHidden(true)
+                }
+                Text(permission.project)
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+                    .frame(maxWidth: layout.hasCameraHousing ? commandEchoWingWidth : .infinity, alignment: .trailing)
+            }
+            .padding(.horizontal, 18)
+            .frame(height: layout.hasCameraHousing ? layout.notchBandHeight : 34)
+
+            VStack(alignment: .leading, spacing: 8) {
+                agentCommandText(permission)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.white.opacity(0.08)))
+                HStack(spacing: 6) {
+                    agentAnswerButtons(permission)
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+            .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onHover(perform: echoHoverChanged)
+    }
+
     // MARK: Shelf
 
     private var dashboardShelfSection: some View {
@@ -2701,6 +3130,7 @@ struct DynamicNotchView: View {
             case .shelf: settings.dashboardFileShelfEnabled
             case .notifications: settings.dashboardNotificationsEnabled
             case .shortcuts: settings.shortcutsEnabled
+            case .agents: settings.agentsEnabled
             case .clipboard: settings.dashboardClipboardEnabled
             case .home, .calendar: true
             }
@@ -2737,7 +3167,7 @@ struct DynamicNotchView: View {
     /// stay as icons. One shared capsule slides between them.
     private func dashboardNavigationItem(_ section: DashboardSection, showsLabel: Bool = true) -> some View {
         let isSelected = dashboardSection == section
-        let badge = section == .notifications ? notificationMonitor.unreadCount : 0
+        let badge = section == .notifications ? notificationMonitor.unreadCount : (section == .agents ? agentHub.waitingCount : 0)
 
         return Button {
             selectDashboardSection(section)
@@ -2780,6 +3210,7 @@ struct DynamicNotchView: View {
     private func dashboardSectionSymbol(_ section: DashboardSection) -> String {
         switch section {
         case .home: "house.fill"
+        case .agents: "terminal.fill"
         case .calendar: "calendar"
         case .timer: "timer"
         case .shelf: "tray.full.fill"
@@ -3000,7 +3431,12 @@ struct DynamicNotchView: View {
     }
 
     private func loadLyrics() {
-        guard settings.lyricsEnabled, mediaManager.hasActiveTrack else { return }
+        guard settings.lyricsEnabled else { return }
+        // Nothing playing: the last song's lines must not stay up.
+        guard mediaManager.hasActiveTrack else {
+            lyricsManager.reset()
+            return
+        }
         lyricsManager.load(
             title: mediaManager.trackName,
             artist: mediaManager.artistName,
@@ -3116,6 +3552,19 @@ struct DynamicNotchView: View {
                 downloadHUD(download)
             } else if case .rain(let outlook) = displayedEcho {
                 rainHUD(outlook)
+            } else if case .updateAvailable = displayedEcho {
+                systemEchoHUD
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        UpdateManager.shared.checkForUpdates()
+                        dismissEcho()
+                    }
+            } else if case .agentFinished(let session) = displayedEcho {
+                agentHUD(session, isWaiting: false)
+            } else if case .agentWaiting(let session) = displayedEcho {
+                agentHUD(session, isWaiting: true)
+            } else if case .agentPermission(let permission) = displayedEcho {
+                agentPermissionHUD(permission)
             } else {
                 systemEchoHUD
             }
@@ -3776,7 +4225,8 @@ struct DynamicNotchView: View {
             case .pluggedIn(let level, _), .unplugged(let level), .low(let level): Double(level) / 100
             }
         case .copied, .pasted, .screenshot, .capsLock, .mediaSkip, .trackChanged, .notification,
-             .timerFinished, .upcomingEvent, .headphones, .privacy, .screenshotPreview, .downloadFinished, .rain: nil
+             .timerFinished, .upcomingEvent, .headphones, .privacy, .screenshotPreview, .downloadFinished, .rain,
+             .agentFinished, .agentWaiting, .agentPermission, .updateAvailable: nil
         }
     }
 
@@ -3794,6 +4244,10 @@ struct DynamicNotchView: View {
         case .trackChanged(let title, _): title
         case .notification(let item): item.appName
         case .rain(let outlook): rainStartText(outlook)
+        case .agentFinished(let session): localized("\(session.source.name) bitirdi", "\(session.source.name) finished")
+        case .agentWaiting(let session): localized("\(session.source.name) seni bekliyor", "\(session.source.name) is waiting for you")
+        case .agentPermission(let permission): localized("\(permission.source.name) izin istiyor", "\(permission.source.name) asks permission")
+        case .updateAvailable(let version): localized("islo. \(version) hazır", "islo. \(version) is ready")
         case .upcomingEvent(let event): event.title
         case .headphones(let battery): battery.name
         case .privacy(let usage): usage.appName ?? privacyKindText(usage)
@@ -3824,6 +4278,9 @@ struct DynamicNotchView: View {
         case .trackChanged: artistTitle
         case .notification(let item): item.headline
         case .rain: localized("Şemsiyeni al", "Take an umbrella")
+        case .agentFinished(let session), .agentWaiting(let session): session.project
+        case .agentPermission(let permission): permission.project
+        case .updateAvailable: localized("Güncellemek için tıkla", "Click to update")
         case .upcomingEvent(let event): eventTimeText(event, now: Date())
         case .headphones: localized("Bağlandı", "Connected")
         case .privacy(let usage): privacyDetailText(usage)
@@ -3859,6 +4316,8 @@ struct DynamicNotchView: View {
         case .screenshotPreview: isAllowed = settings.screenshotPreviewEnabled
         case .downloadFinished: isAllowed = settings.downloadsEnabled
         case .rain: isAllowed = settings.weatherEnabled && settings.rainAlertsEnabled
+        case .agentFinished, .agentWaiting, .agentPermission: isAllowed = settings.agentsEnabled
+        case .updateAvailable: isAllowed = true
         // The preview replaces the plain "Screenshot captured" echo.
         case .screenshot: isAllowed = settings.dashboardCommandEchoEnabled && !settings.screenshotPreviewEnabled
         // Its own switch; not tied to the volume/brightness HUD.
@@ -3896,6 +4355,11 @@ struct DynamicNotchView: View {
         case .screenshotPreview: duration = 7
         case .downloadFinished: duration = 6
         case .rain: duration = 7
+        case .agentFinished: duration = 6
+        case .updateAvailable: duration = 9
+        case .agentWaiting: duration = 9
+        // Stays while the agent waits; a click or the terminal ends it.
+        case .agentPermission: duration = 60
         case .screenshot: duration = 3.2
         case .trackChanged: duration = settings.trackChangeDisplayDuration
         default: duration = 1.45
@@ -3941,7 +4405,7 @@ struct DynamicNotchView: View {
     private var isInteractiveEchoVisible: Bool {
         guard isCommandEchoVisible else { return false }
         switch displayedEcho {
-        case .screenshotPreview, .downloadFinished, .upcomingEvent, .rain: return true
+        case .screenshotPreview, .downloadFinished, .upcomingEvent, .rain, .agentFinished, .agentWaiting, .agentPermission, .updateAvailable: return true
         default: return false
         }
     }
@@ -3949,6 +4413,7 @@ struct DynamicNotchView: View {
     private func dashboardSectionLabel(_ section: DashboardSection) -> String {
         switch section {
         case .home: localized("Ana", "Home")
+        case .agents: localized("Ajanlar", "Agents")
         case .calendar: localized("Takvim", "Calendar")
         case .timer: localized("Zamanlayıcı", "Timer")
         case .shelf: localized("Dosya Rafı", "File Shelf")
@@ -4580,7 +5045,7 @@ struct DynamicNotchView: View {
     private var effectiveIdleMode: NotchIdleMode {
         switch idleActivity {
         case .none: .hiddenMini
-        case .timer, .download, .privacy: .visibleIsland
+        case .timer, .download, .privacy, .agent: .visibleIsland
         case .music: settings.notchIdleMode == .hiddenMini ? .hiddenMini : .visibleIsland
         }
     }
@@ -4603,6 +5068,13 @@ struct DynamicNotchView: View {
             let height = (layout.hasCameraHousing ? layout.notchBandHeight : 34) + 56
             return CGSize(width: width, height: height)
         }
+        if case .agentPermission = displayedEcho {
+            let width = layout.hasCameraHousing
+                ? min(max(layout.cameraHousingWidth + 380, 560), layout.screenWidth - 24)
+                : min(480, layout.screenWidth - 24)
+            let height = (layout.hasCameraHousing ? layout.notchBandHeight : 34) + 92
+            return CGSize(width: width, height: height)
+        }
         if case .screenshotPreview = displayedEcho {
             let width = layout.hasCameraHousing
                 ? min(max(layout.cameraHousingWidth + 350, 530), layout.screenWidth - 24)
@@ -4619,6 +5091,8 @@ struct DynamicNotchView: View {
         case .power: extensionWidth = 330
         case .privacy: extensionWidth = 360
         case .downloadFinished: extensionWidth = 420
+        case .agentFinished, .agentWaiting: extensionWidth = 470
+        case .updateAvailable: extensionWidth = 420
         case .mediaSkip: extensionWidth = 260
         default: extensionWidth = 300
         }
@@ -4748,6 +5222,11 @@ struct DynamicNotchView: View {
         if idleActivity == .privacy {
             let usage = privacyMonitor.usage
             return [usage.appName, privacyDetailText(usage)].compactMap { $0 }.joined(separator: ", ")
+        }
+        if idleActivity == .agent {
+            return agentHub.waitingCount > 0
+                ? localized("Bir ajan seni bekliyor", "An agent is waiting for you")
+                : localized("Ajan çalışıyor", "An agent is working")
         }
         guard mediaManager.hasActiveTrack else {
             return "Media controls. Nothing is currently playing."

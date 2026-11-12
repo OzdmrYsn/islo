@@ -1409,7 +1409,8 @@ final class WeatherManager: ObservableObject {
         case 0: turkish ? "Açık" : "Clear"
         case 1: turkish ? "Az bulutlu" : "Mostly clear"
         case 2: turkish ? "Parçalı bulutlu" : "Partly cloudy"
-        case 3: turkish ? "Kapalı" : "Overcast"
+        // Not "Kapalı": on its own that reads as "switched off".
+        case 3: turkish ? "Çok bulutlu" : "Overcast"
         case 45, 48: turkish ? "Sisli" : "Foggy"
         case 51, 53, 55, 56, 57: turkish ? "Çiseliyor" : "Drizzle"
         case 61, 63, 66, 80, 81: turkish ? "Yağmurlu" : "Rain"

@@ -13,6 +13,7 @@
 		A10000000000000000000004 /* MediaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* MediaManager.swift */; };
 		A10000000000000000000005 /* DynamicNotchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* DynamicNotchView.swift */; };
 		A10000000000000000000006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* Assets.xcassets */; };
+		D10000000000000000000010 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = D30000000000000000000010 /* InfoPlist.strings */; };
 		A10000000000000000000007 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* AppSettings.swift */; };
 		A10000000000000000000008 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* SettingsView.swift */; };
 		A10000000000000000000009 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* OnboardingView.swift */; };
@@ -21,6 +22,7 @@
 		B10000000000000000000002 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B40000000000000000000001 /* Sparkle */; };
 		D10000000000000000000001 /* DashboardFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000001 /* DashboardFeatures.swift */; };
 		D10000000000000000000002 /* LiveFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000002 /* LiveFeatures.swift */; };
+		D10000000000000000000003 /* AgentFeatures.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000003 /* AgentFeatures.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -33,6 +35,8 @@
 		A20000000000000000000007 /* islo.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = islo.entitlements; sourceTree = "<group>"; };
 		A20000000000000000000008 /* islo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = islo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D20000000000000000000011 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		D20000000000000000000012 /* tr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = tr; path = tr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A20000000000000000000010 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		A20000000000000000000011 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A20000000000000000000012 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -40,6 +44,7 @@
 		B20000000000000000000001 /* UpdateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateManager.swift; sourceTree = "<group>"; };
 		D20000000000000000000001 /* DashboardFeatures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardFeatures.swift; sourceTree = "<group>"; };
 		D20000000000000000000002 /* LiveFeatures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveFeatures.swift; sourceTree = "<group>"; };
+		D20000000000000000000003 /* AgentFeatures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentFeatures.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +71,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000009 /* Assets.xcassets */,
+				D30000000000000000000010 /* InfoPlist.strings */,
 				A20000000000000000000001 /* IsloApp.swift */,
 				A20000000000000000000002 /* AppDelegate.swift */,
 				A20000000000000000000010 /* AppSettings.swift */,
@@ -75,6 +81,7 @@
 				B20000000000000000000001 /* UpdateManager.swift */,
 				D20000000000000000000001 /* DashboardFeatures.swift */,
 				D20000000000000000000002 /* LiveFeatures.swift */,
+				D20000000000000000000003 /* AgentFeatures.swift */,
 				A20000000000000000000003 /* WindowController.swift */,
 				A20000000000000000000004 /* MediaManager.swift */,
 				A20000000000000000000005 /* DynamicNotchView.swift */,
@@ -137,6 +144,7 @@
 			knownRegions = (
 				en,
 				Base,
+				tr,
 			);
 			mainGroup = A40000000000000000000001;
 			productRefGroup = A40000000000000000000003 /* Products */;
@@ -151,12 +159,25 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXVariantGroup section */
+		D30000000000000000000010 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				D20000000000000000000011 /* en */,
+				D20000000000000000000012 /* tr */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
 /* Begin PBXResourcesBuildPhase section */
 		A70000000000000000000001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000006 /* Assets.xcassets in Resources */,
+				D10000000000000000000010 /* InfoPlist.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -179,6 +200,7 @@
 				B10000000000000000000001 /* UpdateManager.swift in Sources */,
 				D10000000000000000000001 /* DashboardFeatures.swift in Sources */,
 				D10000000000000000000002 /* LiveFeatures.swift in Sources */,
+				D10000000000000000000003 /* AgentFeatures.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

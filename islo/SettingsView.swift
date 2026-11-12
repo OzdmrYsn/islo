@@ -261,14 +261,14 @@ struct ChipPicker<Value: Hashable>: View {
 /// Everything islo. can do that has an on/off switch.
 private enum Feature: String, CaseIterable, Identifiable {
     case notifications, commandEcho, calendar, devices, privacy, screenshots, downloads
-    case timer, shelf, clipboard, shortcuts, keepAwake, weather, lyrics
+    case agents, timer, shelf, clipboard, shortcuts, keepAwake, weather, lyrics
 
     var id: String { rawValue }
 
     /// Things the notch tells you about on its own.
     static let alerts: [Feature] = [.notifications, .commandEcho, .calendar, .devices, .privacy, .screenshots, .downloads]
     /// Tools that live in the open notch.
-    static let panel: [Feature] = [.timer, .shelf, .clipboard, .shortcuts, .keepAwake, .weather, .lyrics]
+    static let panel: [Feature] = [.agents, .timer, .shelf, .clipboard, .shortcuts, .keepAwake, .weather, .lyrics]
 
     var symbol: String {
         switch self {
@@ -279,6 +279,7 @@ private enum Feature: String, CaseIterable, Identifiable {
         case .privacy: "video.fill"
         case .screenshots: "camera.viewfinder"
         case .downloads: "arrow.down.circle.fill"
+        case .agents: "terminal.fill"
         case .timer: "timer"
         case .shelf: "tray.full.fill"
         case .clipboard: "list.clipboard.fill"
@@ -298,6 +299,7 @@ private enum Feature: String, CaseIterable, Identifiable {
         case .privacy: Tint.cyan
         case .screenshots: Tint.purple
         case .downloads: Tint.mint
+        case .agents: Tint.indigo
         case .timer: Tint.orange
         case .shelf: Tint.blue
         case .clipboard: Tint.teal
@@ -358,6 +360,9 @@ struct SettingsView: View {
     @State private var isSearchingWeather = false
     @State private var showsNotificationHelp = false
     @State private var confirmsReset = false
+    /// Bumped after connecting or disconnecting, to read the files again.
+    @State private var agentRefresh = 0
+    @State private var agentError: String?
 
     /// Settings is always light; the notch and the welcome guide stay dark.
     private let p = IsloPalette.light
@@ -634,6 +639,7 @@ struct SettingsView: View {
         case .privacy: return .privacy
         case .screenshots: return .screenshot
         case .downloads: return .download
+        case .agents: return .agent
         case .timer: return settings.liveTimerInNotch ? .timer : .timerPanel
         case .shelf: return .shelf
         case .clipboard: return .clipboard
@@ -892,6 +898,17 @@ struct SettingsView: View {
                     shortcutPicker($settings.focusEndShortcut)
                 }
             }
+        case .agents:
+            group {
+                row(text("İzinleri çentikten yanıtla", "Answer permissions in the notch"), subtitle: text("Kapalıyken yalnızca haber verir; yanıtı terminalde verirsin.", "Off: it only tells you; you answer in the terminal.")) {
+                    switchControl($settings.agentsApproveInNotch)
+                }
+            }
+            group(text("Bağlantılar", "Connections"), footer: agentError ?? text("Codex, yeni bir kancayı ilk kez çalıştırmadan önce onay ister: Codex'te /hooks yazıp islo. satırını onayla.", "Codex asks before it runs a new hook: type /hooks in Codex and approve the islo. entry.")) {
+                agentConnectionRow(.claude, name: "Claude Code")
+                divider
+                agentConnectionRow(.codex, name: "Codex")
+            }
         case .shortcuts:
             group(text("Çentikte görünecekler", "Shown in the notch")) {
                 shortcutFavoritesPicker
@@ -908,6 +925,49 @@ struct SettingsView: View {
         default:
             EmptyView()
         }
+    }
+
+    // MARK: Agents
+
+    private func agentConnectionRow(_ source: AgentSource, name: String) -> some View {
+        // Read again whenever a button changed the file.
+        let status = agentRefresh >= 0 ? AgentIntegration.status(source) : .notConnected
+        let subtitle: String
+        switch status {
+        case .connected: subtitle = text("Bağlı", "Connected")
+        case .elsewhere: subtitle = text("islo.'nun başka bir kopyasına bağlı", "Connected to another copy of islo.")
+        case .notConnected: subtitle = text("Bağlı değil", "Not connected")
+        case .notInstalled: subtitle = text("Bu Mac'te kurulu görünmüyor", "Doesn't look installed on this Mac")
+        }
+        return row(name, subtitle: subtitle) {
+            HStack(spacing: 8) {
+                if status == .connected || status == .elsewhere {
+                    Button(text("Kaldır", "Remove")) { changeAgent(source, connect: false) }
+                        .buttonStyle(quietButton)
+                }
+                if status != .connected {
+                    Button(status == .elsewhere ? text("Buraya bağla", "Connect here") : text("Bağla", "Connect")) {
+                        changeAgent(source, connect: true)
+                    }
+                    .buttonStyle(IsloButtonStyle(prominent: true, accent: accent, onAccent: onAccent))
+                    .disabled(status == .notInstalled)
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(p.good)
+                }
+            }
+        }
+    }
+
+    private func changeAgent(_ source: AgentSource, connect: Bool) {
+        do {
+            if connect { try AgentIntegration.connect(source) } else { try AgentIntegration.disconnect(source) }
+            agentError = nil
+        } catch {
+            agentError = text("Ayar dosyası değiştirilemedi: \(error.localizedDescription)", "Couldn't change the settings file: \(error.localizedDescription)")
+        }
+        agentRefresh += 1
     }
 
     // MARK: Notification apps and VIPs
@@ -1095,6 +1155,7 @@ struct SettingsView: View {
         case .screenshots: $settings.screenshotPreviewEnabled
         case .downloads: $settings.downloadsEnabled
         case .timer: $settings.dashboardFocusTimerEnabled
+        case .agents: $settings.agentsEnabled
         case .shelf: $settings.dashboardFileShelfEnabled
         case .clipboard: $settings.dashboardClipboardEnabled
         case .shortcuts: $settings.shortcutsEnabled
@@ -1141,6 +1202,7 @@ struct SettingsView: View {
         case .screenshots: text("Ekran görüntüsü", "Screenshots")
         case .downloads: text("İndirmeler", "Downloads")
         case .timer: text("Zamanlayıcı", "Timer")
+        case .agents: text("Ajanlar", "Agents")
         case .shelf: text("Dosya Rafı", "File Shelf")
         case .clipboard: text("Pano", "Clipboard")
         case .shortcuts: text("Kısayollar", "Shortcuts")
@@ -1160,6 +1222,7 @@ struct SettingsView: View {
         case .screenshots: text("Yeni ekran görüntüsü çentiğin altında önizlenir.", "New screenshots preview under the notch.")
         case .downloads: text("İndirme ilerlemesi kapalı çentikte bir halkayla.", "Download progress as a ring in the closed notch.")
         case .timer: text("Zamanlayıcı ve Pomodoro, geri sayımı çentikte.", "Timer and Pomodoro, counting down in the notch.")
+        case .agents: text("Claude Code ve Codex bitince haber verir; izinlerini çentikten verirsin.", "Claude Code and Codex tell you when they're done; you answer their permission requests in the notch.")
         case .shelf: text("Dosyaları çentiğe bırak, taşı ya da AirDrop'la.", "Drop files on the notch, move or AirDrop them.")
         case .clipboard: text("Son kopyaladığın metinler çentikte bir tık uzağında.", "The text you copied recently, one click away in the notch.")
         case .shortcuts: text("Seçtiğin kısayollar çentikte tek tıkla çalışır.", "Your picked shortcuts run in one click.")
@@ -1191,6 +1254,8 @@ struct SettingsView: View {
             text("Kadranı çevirerek ya da −/+ ile süreyi kur. Pomodoro modunda odak ve mola turları sırayla ilerler.", "Turn the dial or use −/+ to set the time. Pomodoro mode alternates focus and breaks.")
         case .shelf:
             text("Raftan kaldırmak dosyayı silmez. Otomatik temizleme süresini Raf sekmesinden seçebilirsin.", "Removing a file from the shelf never deletes it. Pick an auto-clear time in the Shelf tab.")
+        case .agents:
+            text("Bağlantı, ajanın kendi ayar dosyasına islo.'yu çağıran bir kanca ekler; oradaki diğer kancalara dokunmaz ve ilk değişiklikten önce dosyanın yedeğini yanına koyar. Her şey bu Mac'in içinde kalır. islo. kapalıyken ya da sen yanıt vermezsen ajan her zamanki gibi terminalden sorar.", "Connecting adds a hook that calls islo. to the agent's own settings file; other hooks there are left alone, and a backup of the file is put beside it before the first change. Everything stays on this Mac. While islo. is closed, or if you don't answer, the agent asks in the terminal as usual.")
         case .clipboard:
             text("Geçmiş yalnızca bellekte tutulur, diske yazılmaz ve islo. kapanınca silinir. Parola yöneticilerinin gizli olarak işaretlediği kopyalar alınmaz; işaretlenmemiş bir parola yine de görünebilir. Otomatik temizleme süresini Pano sekmesinden seçebilirsin.", "History stays in memory only, is never written to disk and is gone when islo. quits. Copies that password managers mark as concealed are skipped; an unmarked password can still show up. Pick an auto-clear time in the Clipboard tab.")
         case .shortcuts:
@@ -1438,7 +1503,11 @@ struct SettingsView: View {
                         .disabled(!updateManager.canCheckForUpdates)
                 }
                 divider
-                row(text("Otomatik güncelle", "Update automatically")) {
+                row(text("Yeni sürümü haber ver", "Tell me about new versions"), subtitle: text("Günde bir kez bakar; çıkınca çentik söyler.", "Looks once a day; the notch tells you when there is one.")) {
+                    switchControl(Binding(get: { updateManager.automaticChecksEnabled }, set: updateManager.setAutomaticChecks))
+                }
+                divider
+                row(text("Sormadan kur", "Install without asking"), subtitle: text("Yeni sürümü arka planda indirir ve kurar.", "Downloads and installs new versions in the background.")) {
                     switchControl(automaticUpdatesBinding)
                 }
             }
@@ -1952,7 +2021,7 @@ struct SurfaceTonePicker: View {
 private enum StageDemo: Hashable {
     case off, music, dashboard
     case message, messageCount, volume, meeting, nextEvent, charging, privacy, screenshot, download
-    case timer, timerPanel, shelf, clipboard, shortcuts, awake
+    case timer, timerPanel, shelf, clipboard, shortcuts, awake, agent
     case weather(rain: Bool)
     case lyrics
     case permissions(missing: Int)
@@ -1967,7 +2036,7 @@ private enum StageDemo: Hashable {
         case .volume, .weather, .permissions, .about: CGSize(width: 340, height: 30)
         case .meeting, .nextEvent: CGSize(width: 404, height: 30)
         case .message, .lyrics: CGSize(width: 372, height: 88)
-        case .screenshot, .shelf, .clipboard, .shortcuts, .timerPanel: CGSize(width: 404, height: 112)
+        case .screenshot, .shelf, .clipboard, .shortcuts, .timerPanel, .agent: CGSize(width: 404, height: 112)
         case .dashboard: CGSize(width: 452, height: 124)
         }
     }
@@ -2343,6 +2412,26 @@ private struct StageDemoContent: View {
                         shortcutTile(t("Sabah Özeti", "Morning Brief"), Color(red: 0.2, green: 0.72, blue: 0.9))
                         shortcutTile(t("Mola Ver", "Take a Break"), Color(red: 0.25, green: 0.78, blue: 0.55))
                         shortcutTile(t("Odak Modu", "Focus Mode"), Color(red: 0.62, green: 0.42, blue: 0.98))
+                    }
+                }
+            case .agent:
+                below {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 7) {
+                            Image(systemName: "lock.shield.fill").foregroundStyle(Color.orange)
+                            Text(t("Claude izin istiyor", "Claude asks permission")).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                            Spacer(minLength: 0)
+                        }
+                        Text("Bash  npm run build")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .padding(.horizontal, 8)
+                            .frame(maxWidth: .infinity, minHeight: 22, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.white.opacity(0.08)))
+                        HStack(spacing: 5) {
+                            chip(t("İzin ver", "Allow"), filled: true)
+                            chip(t("Reddet", "Deny"))
+                        }
                     }
                 }
             case .timerPanel:

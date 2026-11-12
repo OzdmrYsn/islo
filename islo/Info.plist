@@ -25,11 +25,11 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>islo., çalan parçayı göstermek ve medya kontrollerini çalıştırmak için Music ve Spotify ile iletişim kurar.</string>
+	<string>islo. talks to Music and Spotify to show the song that is playing and to run the media controls.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>islo., sıradaki etkinliğini çentikte göstermek ve toplantıdan önce seni uyarmak için takvimini okur.</string>
+	<string>islo. reads your calendar to show your next event in the notch and to alert you before a meeting.</string>
 	<key>NSCalendarsUsageDescription</key>
-	<string>islo., sıradaki etkinliğini çentikte göstermek ve toplantıdan önce seni uyarmak için takvimini okur.</string>
+	<string>islo. reads your calendar to show your next event in the notch and to alert you before a meeting.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrefersDisplaySafeAreaCompatibilityMode</key>
@@ -41,7 +41,7 @@
 	<key>SUAutomaticallyUpdate</key>
 	<false/>
 	<key>SUEnableAutomaticChecks</key>
-	<false/>
+	<true/>
 	<key>SUFeedURL</key>
 	<string>https://raw.githubusercontent.com/OzdmrYsn/islo/main/appcast.xml</string>
 	<key>SUPublicEDKey</key>
