@@ -16,7 +16,7 @@ islo., medya kontrollerini ve günlük araçları MacBook'un kamera çentiğiyle
 - Müzik çalarken hafifçe genişleyen, çalmadığında standart çentiğe dönen ada; isteğe bağlı her zaman gizli Gizli Mini modu
 - Akıcı kompakt/genişletilmiş görünüm geçişi
 - Medya, tarih, saat, Takvim, Zamanlayıcı ve Pil kısayollarını birleştiren Genel panel
-- Music ve Spotify parça, sanatçı ve kapak bilgileri
+- Music, Spotify ve tarayıcıdaki YouTube Music için parça, sanatçı ve kapak bilgileri
 - Oynat/duraklat, önceki/sonraki, karışık çal, tekrar, ilerleme ve sistem sesi kontrolleri
 - Üzerine gelme, tıklama veya çentiğin orta etkin alanıyla seçilebilir açılma davranışı
 - Şarkı değiştiğinde süreli gösterim ve tam ekran uygulamalarda isteğe bağlı gizleme
@@ -67,7 +67,7 @@ islo. is a SwiftUI + AppKit app that blends media controls and everyday utilitie
 - An island that widens slightly while music plays and returns to the standard notch otherwise, plus an always-concealed Hidden Mini mode
 - Fluid compact/expanded transitions
 - A General dashboard combining media, date, time, Calendar, Timer, and Battery shortcuts
-- Track, artist, and artwork from Music and Spotify
+- Track, artist, and artwork from Music, Spotify, and YouTube Music in your browser
 - Play/pause, previous/next, shuffle, repeat, progress, and system-volume controls
 - Selectable hover, click, or center-zone opening behavior
 - Timed track-change previews and optional hiding over full-screen apps

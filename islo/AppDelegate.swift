@@ -692,6 +692,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             AgentHub.shared.debugSimulate(String(command.dropFirst("agent:".count)))
         case "update":
             commandEchoManager.showUpdateAvailable("2.6.0")
+        case let command where command.hasPrefix("ytm-client:"):
+            // Counts the named app's playback as YouTube Music.
+            mediaManager?.debugSetYouTubeMusicClient(String(command.dropFirst("ytm-client:".count)))
         case "trackchange":
             commandEchoManager.showTrackChanged("Deneme şarkısı", direction: nil)
         case let command where command.hasPrefix("settings"):

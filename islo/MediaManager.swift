@@ -6,21 +6,29 @@ enum MediaSource: String, Sendable {
     case none
     case appleMusic
     case spotify
+    /// Plays in a browser tab or a web app, so it has no bundle of its own.
+    case youtubeMusic
 
     var displayName: String {
         switch self {
         case .none: "No Media"
         case .appleMusic: "Apple Music"
         case .spotify: "Spotify"
+        case .youtubeMusic: "YouTube Music"
         }
     }
 
     var bundleIdentifier: String? {
         switch self {
-        case .none: nil
+        case .none, .youtubeMusic: nil
         case .appleMusic: "com.apple.Music"
         case .spotify: "com.spotify.client"
         }
+    }
+
+    /// YouTube Music has no shuffle or repeat that can be reached from outside.
+    var supportsShuffleAndRepeat: Bool {
+        self == .appleMusic || self == .spotify
     }
 
     fileprivate static let players: [MediaSource] = [
@@ -139,6 +147,16 @@ private actor AppleScriptBridge {
 
     func perform(_ command: PlayerCommand, on source: MediaSource) throws {
         guard source != .none else { return }
+        if source == .youtubeMusic {
+            switch command {
+            case .togglePlayPause: SystemMediaRemote.send(.togglePlayPause)
+            case .next: SystemMediaRemote.send(.nextTrack)
+            case .previous: SystemMediaRemote.send(.previousTrack)
+            case let .seek(value): SystemMediaRemote.seek(to: value)
+            case .setShuffle, .setRepeat: break
+            }
+            return
+        }
 
         let applicationIdentifier = source == .appleMusic
             ? "com.apple.Music"
@@ -185,6 +203,32 @@ private actor AppleScriptBridge {
             end tell
             """
         )
+    }
+
+    /// Whether one of the browser's tabs is on YouTube Music. Chromium
+    /// browsers and Safari answer this the same way.
+    func hasYouTubeMusicTab(browser bundleIdentifier: String) throws -> Bool {
+        let descriptor = try execute(
+            """
+            if not (application id "\(bundleIdentifier)" is running) then return false
+            tell application id "\(bundleIdentifier)"
+                set windowCount to count of windows
+                repeat with windowIndex from 1 to windowCount
+                    try
+                        set addresses to URL of tabs of window windowIndex
+                        repeat with anAddress in addresses
+                            try
+                                if (anAddress as text) contains "music.youtube.com" then return true
+                            end try
+                        end repeat
+                    end try
+                end repeat
+            end tell
+            return false
+            """,
+            reusable: true
+        )
+        return descriptor.booleanValue
     }
 
     func systemVolume() throws -> Double {
@@ -393,10 +437,321 @@ private actor AppleScriptBridge {
             end tell
             """
 
-        case .none:
+        case .none, .youtubeMusic:
             return "return {\"\", \"\", \"\", \"stopped\", 0, 0, \"\", \"\", false, \"off\"}"
         }
     }
+}
+
+/// What macOS itself lists as playing right now, whichever app it is.
+private struct SystemNowPlayingInfo: Decodable, Sendable {
+    var bundle = ""
+    var parent = ""
+    var title = ""
+    var artist = ""
+    var album = ""
+    var duration = 0.0
+    var elapsed = 0.0
+    /// When `elapsed` was true, in seconds since 1970.
+    var timestamp = 0.0
+    var rate = 0.0
+    var playing = false
+
+    private enum CodingKeys: String, CodingKey {
+        case bundle, parent, title, artist, album, duration, elapsed, timestamp, rate, playing
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        bundle = (try? values.decode(String.self, forKey: .bundle)) ?? ""
+        parent = (try? values.decode(String.self, forKey: .parent)) ?? ""
+        title = (try? values.decode(String.self, forKey: .title)) ?? ""
+        artist = (try? values.decode(String.self, forKey: .artist)) ?? ""
+        album = (try? values.decode(String.self, forKey: .album)) ?? ""
+        duration = (try? values.decode(Double.self, forKey: .duration)) ?? 0
+        elapsed = (try? values.decode(Double.self, forKey: .elapsed)) ?? 0
+        timestamp = (try? values.decode(Double.self, forKey: .timestamp)) ?? 0
+        rate = (try? values.decode(Double.self, forKey: .rate)) ?? 0
+        playing = (try? values.decode(Bool.self, forKey: .playing)) ?? false
+    }
+
+    /// The app the sound belongs to: a browser's helper reports its browser.
+    var owner: String { parent.isEmpty ? bundle : parent }
+}
+
+/// Reads the system's now-playing entry. macOS only tells Apple's own
+/// processes, so the question is asked through `osascript`, kept running as
+/// one small helper that answers a line at a time.
+private final class SystemNowPlayingReader: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "com.ozdmrysn.islo.now-playing")
+    private var process: Process?
+    private var requestPipe: FileHandle?
+    private var responseDescriptor: Int32 = -1
+    private var retryAfter = Date.distantPast
+
+    private static let helperScript = """
+    ObjC.import('Foundation');
+    function run() {
+      $.NSBundle.bundleWithPath('/System/Library/PrivateFrameworks/MediaRemote.framework/').load;
+      const Request = $.NSClassFromString('MRNowPlayingRequest');
+      const input = $.NSFileHandle.fileHandleWithStandardInput;
+      const output = $.NSFileHandle.fileHandleWithStandardOutput;
+      const prefix = 'kMRMediaRemoteNowPlayingInfo';
+      const value = (info, key) => {
+        try { const v = info.objectForKey(prefix + key); return (v === undefined || v.isNil()) ? null : v; }
+        catch (e) { return null; }
+      };
+      const text = (info, key) => { const v = value(info, key); return v ? ObjC.unwrap(v.description) : ''; };
+      const number = (info, key) => { const v = value(info, key); return v ? (parseFloat(ObjC.unwrap(v.description)) || 0) : 0; };
+      while (true) {
+        const data = input.availableData;
+        if (data.length === 0) break;
+        const command = ObjC.unwrap($.NSString.alloc.initWithDataEncoding(data, $.NSUTF8StringEncoding)).trim();
+        const out = {};
+        try {
+          const info = Request.localNowPlayingItem.nowPlayingInfo;
+          try {
+            const client = Request.localNowPlayingPlayerPath.client;
+            out.bundle = ObjC.unwrap(client.bundleIdentifier) || '';
+            out.parent = ObjC.unwrap(client.parentApplicationBundleIdentifier) || '';
+          } catch (e) {}
+          out.title = text(info, 'Title');
+          out.artist = text(info, 'Artist');
+          out.album = text(info, 'Album');
+          out.duration = number(info, 'Duration');
+          out.elapsed = number(info, 'ElapsedTime');
+          out.rate = number(info, 'PlaybackRate');
+          const stamp = value(info, 'Timestamp');
+          out.timestamp = stamp ? stamp.timeIntervalSince1970 : 0;
+          out.playing = Request.localIsPlaying ? true : false;
+        } catch (e) {}
+        output.writeData($(JSON.stringify(out) + '\\n').dataUsingEncoding($.NSUTF8StringEncoding));
+      }
+    }
+    """
+
+    func info() async -> SystemNowPlayingInfo? {
+        guard let data = await request("info") else { return nil }
+        return try? JSONDecoder().decode(SystemNowPlayingInfo.self, from: data)
+    }
+
+    func stop() {
+        queue.async { self.tearDown() }
+    }
+
+    private func request(_ command: String, timeout: TimeInterval = 2) async -> Data? {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                continuation.resume(returning: self.exchange(command, timeout: timeout))
+            }
+        }
+    }
+
+    private func exchange(_ command: String, timeout: TimeInterval) -> Data? {
+        guard launchIfNeeded(), let requestPipe else { return nil }
+        do {
+            try requestPipe.write(contentsOf: Data((command + "\n").utf8))
+        } catch {
+            fail()
+            return nil
+        }
+
+        var line = Data()
+        var buffer = [UInt8](repeating: 0, count: 65_536)
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { fail(); return nil }
+            var descriptor = pollfd(fd: responseDescriptor, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&descriptor, 1, Int32(remaining * 1000))
+            if ready < 0, errno == EINTR { continue }
+            guard ready > 0 else { fail(); return nil }
+            let count = read(responseDescriptor, &buffer, buffer.count)
+            guard count > 0 else { fail(); return nil }
+            line.append(contentsOf: buffer[0..<count])
+            if buffer[count - 1] == 0x0A { return line }
+        }
+    }
+
+    private func launchIfNeeded() -> Bool {
+        if let process, process.isRunning { return true }
+        tearDown()
+        guard retryAfter <= Date() else { return false }
+
+        // Writing to a helper that has gone away must not take the app down.
+        signal(SIGPIPE, SIG_IGN)
+
+        let helper = Process()
+        helper.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        helper.arguments = ["-l", "JavaScript", "-e", Self.helperScript]
+        let requests = Pipe()
+        let responses = Pipe()
+        helper.standardInput = requests
+        helper.standardOutput = responses
+        helper.standardError = FileHandle.nullDevice
+        do {
+            try helper.run()
+        } catch {
+            retryAfter = Date().addingTimeInterval(60)
+            return false
+        }
+        process = helper
+        requestPipe = requests.fileHandleForWriting
+        responsePipe = responses
+        responseDescriptor = responses.fileHandleForReading.fileDescriptor
+        return true
+    }
+
+    /// Kept so the reading end stays open for as long as the helper lives.
+    private var responsePipe: Pipe?
+
+    private func fail() {
+        tearDown()
+        retryAfter = Date().addingTimeInterval(20)
+    }
+
+    private func tearDown() {
+        if let process, process.isRunning { process.terminate() }
+        try? requestPipe?.close()
+        process = nil
+        requestPipe = nil
+        responsePipe = nil
+        responseDescriptor = -1
+    }
+}
+
+/// The system-wide media keys: whatever is playing answers them.
+private enum SystemMediaRemote {
+    enum Command: UInt32 {
+        case togglePlayPause = 2
+        case nextTrack = 4
+        case previousTrack = 5
+    }
+
+    private typealias SendCommand = @convention(c) (UInt32, CFDictionary?) -> Bool
+    private typealias SetElapsedTime = @convention(c) (Double) -> Void
+
+    private static let library = dlopen(
+        "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote",
+        RTLD_NOW
+    )
+
+    static func send(_ command: Command) {
+        guard let library, let symbol = dlsym(library, "MRMediaRemoteSendCommand") else {
+            return
+        }
+        _ = unsafeBitCast(symbol, to: SendCommand.self)(command.rawValue, nil)
+    }
+
+    static func seek(to time: TimeInterval) {
+        guard let library, let symbol = dlsym(library, "MRMediaRemoteSetElapsedTime") else {
+            return
+        }
+        unsafeBitCast(symbol, to: SetElapsedTime.self)(time.isFinite ? max(0, time) : 0)
+    }
+}
+
+/// The system keeps a browser's cover to itself, so a song playing in
+/// YouTube Music gets its cover looked up by name. A song that can't be
+/// matched with confidence keeps the plain tile rather than a wrong cover.
+private enum CoverLookup {
+    private struct Response: Decodable {
+        struct Song: Decodable {
+            let trackName: String?
+            let artistName: String?
+            let artworkUrl100: String?
+        }
+        let results: [Song]
+    }
+
+    static func cover(title: String, artist: String) async throws -> Data? {
+        let wantedTitle = simplified(title)
+        let wantedArtists = artist
+            .components(separatedBy: CharacterSet(charactersIn: ",&"))
+            .map(simplified)
+            .filter { !$0.isEmpty }
+        guard !wantedTitle.isEmpty, let firstArtist = wantedArtists.first else { return nil }
+
+        var components = URLComponents(string: "https://itunes.apple.com/search")
+        components?.queryItems = [
+            URLQueryItem(name: "term", value: "\(wantedTitle) \(firstArtist)"),
+            URLQueryItem(name: "media", value: "music"),
+            URLQueryItem(name: "entity", value: "song"),
+            URLQueryItem(name: "limit", value: "8")
+        ]
+        guard let url = components?.url else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        let (body, _) = try await URLSession.shared.data(for: request)
+        let songs = (try? JSONDecoder().decode(Response.self, from: body))?.results ?? []
+
+        let match = songs.first { song in
+            let foundTitle = simplified(song.trackName ?? "")
+            let foundArtist = simplified(song.artistName ?? "")
+            guard !foundTitle.isEmpty, !foundArtist.isEmpty else { return false }
+            let titleMatches = foundTitle == wantedTitle
+                || foundTitle.hasPrefix(wantedTitle) || wantedTitle.hasPrefix(foundTitle)
+            let artistMatches = wantedArtists.contains {
+                foundArtist.contains($0) || $0.contains(foundArtist)
+            }
+            return titleMatches && artistMatches
+        }
+        guard
+            let small = match?.artworkUrl100,
+            let coverURL = URL(string: small.replacingOccurrences(of: "100x100", with: "600x600"))
+        else {
+            return nil
+        }
+        let (image, response) = try await URLSession.shared.data(from: coverURL)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            return nil
+        }
+        return image.count <= 10_000_000 ? image : nil
+    }
+
+    /// Lowercase, without accents, brackets ("(Remastered)") or punctuation.
+    private static func simplified(_ text: String) -> String {
+        var result = text.folding(
+            options: [.diacriticInsensitive, .caseInsensitive],
+            locale: Locale(identifier: "en_US_POSIX")
+        )
+        for pattern in ["\\([^)]*\\)", "\\[[^\\]]*\\]", "[^\\p{L}\\p{N} ]"] {
+            result = result.replacingOccurrences(
+                of: pattern, with: " ", options: .regularExpression
+            )
+        }
+        return result.split(separator: " ").joined(separator: " ")
+    }
+}
+
+/// Decides whether the system's now-playing entry is YouTube Music.
+private enum YouTubeMusicClient {
+    /// Browsers that can be asked which pages they have open.
+    static let scriptableBrowsers: Set<String> = [
+        "com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.canary",
+        "com.brave.Browser", "com.microsoft.edgemac", "com.operasoftware.Opera",
+        "com.vivaldi.Vivaldi", "company.thebrowser.Browser", "org.chromium.Chromium",
+        "com.apple.Safari"
+    ]
+
+    /// Installed as its own app: the web app every Chromium browser offers,
+    /// a Safari web app, or one of the desktop wrappers.
+    static func isDedicatedApp(_ bundleIdentifier: String) -> Bool {
+        if bundleIdentifier.hasSuffix(".app.cinhimbnkkaeohfgghhklpknlkffjgod") { return true }
+        #if DEBUG
+        if bundleIdentifier == debugBundleIdentifier { return true }
+        #endif
+        let name = NSRunningApplication
+            .runningApplications(withBundleIdentifier: bundleIdentifier)
+            .first?.localizedName?.lowercased() ?? ""
+        return name.contains("youtube music") || name.contains("youtube müzik")
+            || name == "yt music"
+    }
+
+    #if DEBUG
+    /// Lets a test treat any app's playback as YouTube Music.
+    nonisolated(unsafe) static var debugBundleIdentifier: String?
+    #endif
 }
 
 @MainActor
@@ -420,6 +775,12 @@ final class MediaManager: ObservableObject {
     @Published private(set) var lastError: String?
 
     private let bridge = AppleScriptBridge()
+    private let systemNowPlaying = SystemNowPlayingReader()
+    /// The browser or web app YouTube Music is playing in.
+    private var youTubeMusicOwner: String?
+    /// Which track the tab check was last made for, and what it found.
+    private var youTubeMusicCheck: (key: String, isMatch: Bool, at: Date)?
+    private var browserRetryAfter: [String: Date] = [:]
     private var monitorTask: Task<Void, Never>?
     private var artworkTask: Task<Void, Never>?
     private var volumeWriteTask: Task<Void, Never>?
@@ -479,6 +840,7 @@ final class MediaManager: ObservableObject {
         monitorTask = nil
         artworkTask = nil
         volumeWriteTask = nil
+        systemNowPlaying.stop()
         let center = DistributedNotificationCenter.default()
         playerObservers.forEach(center.removeObserver)
         playerObservers.removeAll()
@@ -537,12 +899,7 @@ final class MediaManager: ObservableObject {
         await refreshVolume()
 
         let runningPlayers = runningMediaSources()
-        guard !runningPlayers.isEmpty else {
-            resetMediaState()
-            permissionRetryAfter.removeAll()
-            lastError = nil
-            return
-        }
+        if runningPlayers.isEmpty { permissionRetryAfter.removeAll() }
 
         // A denied TCC request returns -1743 immediately. Backing off keeps the
         // monitor from sending the same rejected Apple Event every second while
@@ -555,11 +912,6 @@ final class MediaManager: ObservableObject {
             return retryDate <= now
         }
 
-        guard !eligiblePlayers.isEmpty else {
-            resetMediaState()
-            return
-        }
-
         let orderedPlayers: [MediaSource]
         if eligiblePlayers.contains(source) {
             orderedPlayers = [source] + eligiblePlayers.filter { $0 != source }
@@ -567,7 +919,7 @@ final class MediaManager: ObservableObject {
             orderedPlayers = eligiblePlayers
         }
 
-        var fallbackSnapshot: MediaSnapshot?
+        var snapshots: [MediaSnapshot] = []
         var selectedSnapshot: MediaSnapshot?
         var latestError: Error?
 
@@ -575,7 +927,7 @@ final class MediaManager: ObservableObject {
             do {
                 let snapshot = try await bridge.snapshot(for: player)
                 permissionRetryAfter[player] = nil
-                fallbackSnapshot = fallbackSnapshot ?? snapshot
+                snapshots.append(snapshot)
 
                 if snapshot.isPlaying {
                     selectedSnapshot = snapshot
@@ -589,12 +941,84 @@ final class MediaManager: ObservableObject {
             }
         }
 
+        // Nothing playing in Music or Spotify: see whether YouTube Music is.
+        if selectedSnapshot == nil, let snapshot = await youTubeMusicSnapshot() {
+            if snapshot.isPlaying {
+                selectedSnapshot = snapshot
+            } else if source == .youtubeMusic {
+                snapshots.insert(snapshot, at: 0)
+            } else {
+                snapshots.append(snapshot)
+            }
+        }
+
+        // Otherwise stay with a paused player, preferring one that has a track.
+        let fallbackSnapshot = snapshots.first { !$0.trackName.isEmpty } ?? snapshots.first
+
         if let snapshot = selectedSnapshot ?? fallbackSnapshot {
             lastError = nil
             apply(snapshot)
-        } else if let latestError {
+        } else {
             resetMediaState()
-            lastError = readableMessage(for: latestError)
+            lastError = latestError.map(readableMessage(for:))
+        }
+    }
+
+    /// The system's now-playing entry, if it turns out to be YouTube Music.
+    private func youTubeMusicSnapshot() async -> MediaSnapshot? {
+        guard let info = await systemNowPlaying.info(), !info.title.isEmpty else {
+            youTubeMusicOwner = nil
+            return nil
+        }
+        let owner = info.owner
+        let identifier = [info.title, info.artist, info.album].joined(separator: "|")
+        guard await isYouTubeMusic(owner: owner, trackKey: owner + "|" + identifier) else {
+            return nil
+        }
+        youTubeMusicOwner = owner
+
+        var position = info.elapsed
+        if info.playing, info.timestamp > 0 {
+            let rate = info.rate > 0 ? info.rate : 1
+            position += max(0, Date().timeIntervalSince1970 - info.timestamp) * rate
+        }
+
+        return MediaSnapshot(
+            source: .youtubeMusic,
+            trackName: info.title,
+            artistName: info.artist,
+            albumName: info.album,
+            isPlaying: info.playing,
+            position: max(0, position),
+            duration: max(0, info.duration),
+            artworkURL: nil,
+            trackIdentifier: identifier,
+            isShuffleEnabled: false,
+            repeatMode: .off
+        )
+    }
+
+    private func isYouTubeMusic(owner: String, trackKey: String) async -> Bool {
+        guard !owner.isEmpty else { return false }
+        if YouTubeMusicClient.isDedicatedApp(owner) { return true }
+        guard YouTubeMusicClient.scriptableBrowsers.contains(owner) else { return false }
+
+        // The browser is asked once per track, and now and then while the
+        // same one keeps playing, not on every poll.
+        if let check = youTubeMusicCheck, check.key == trackKey,
+           Date().timeIntervalSince(check.at) < (check.isMatch ? 60 : 15) {
+            return check.isMatch
+        }
+        if let retryDate = browserRetryAfter[owner], retryDate > Date() { return false }
+
+        do {
+            let isMatch = try await bridge.hasYouTubeMusicTab(browser: owner)
+            browserRetryAfter[owner] = nil
+            youTubeMusicCheck = (trackKey, isMatch, Date())
+            return isMatch
+        } catch {
+            browserRetryAfter[owner] = Date().addingTimeInterval(30)
+            return false
         }
     }
 
@@ -632,10 +1056,12 @@ final class MediaManager: ObservableObject {
     }
 
     func toggleShuffle() {
+        guard source.supportsShuffleAndRepeat else { return }
         perform(.setShuffle(!isShuffleEnabled))
     }
 
     func cycleRepeatMode() {
+        guard source.supportsShuffleAndRepeat else { return }
         let nextMode: PlaybackRepeatMode
 
         switch (source, repeatMode) {
@@ -656,7 +1082,7 @@ final class MediaManager: ObservableObject {
 
     func openSourceApplication() {
         guard source != .none,
-              let bundleIdentifier = source.bundleIdentifier else {
+              let bundleIdentifier = source.bundleIdentifier ?? youTubeMusicOwner else {
             return
         }
 
@@ -806,6 +1232,11 @@ final class MediaManager: ObservableObject {
                     data = downloadedData.count <= 10_000_000
                         ? downloadedData
                         : nil
+                case .youtubeMusic:
+                    data = try await CoverLookup.cover(
+                        title: snapshot.trackName,
+                        artist: snapshot.artistName
+                    )
                 case .none:
                     data = nil
                 }
@@ -851,7 +1282,16 @@ final class MediaManager: ObservableObject {
         repeatMode = .off
         artworkKey = nil
         trackIdentifier = ""
+        youTubeMusicOwner = nil
     }
+
+    #if DEBUG
+    /// Treats this app's playback as YouTube Music, for tests.
+    func debugSetYouTubeMusicClient(_ bundleIdentifier: String?) {
+        YouTubeMusicClient.debugBundleIdentifier = bundleIdentifier
+        Task { await refresh() }
+    }
+    #endif
 
     private func readableMessage(for error: Error) -> String {
         if let localizedError = error as? LocalizedError,

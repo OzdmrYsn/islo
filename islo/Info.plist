@@ -17,15 +17,15 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.6.0</string>
+	<string>2.6.1</string>
 	<key>CFBundleVersion</key>
-	<string>31</string>
+	<string>32</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>islo. talks to Music and Spotify to show the song that is playing and to run the media controls.</string>
+	<string>islo. talks to Music, Spotify and YouTube Music in your browser to show the song that is playing and to run the media controls.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>islo. reads your calendar to show your next event in the notch and to alert you before a meeting.</string>
 	<key>NSCalendarsUsageDescription</key>

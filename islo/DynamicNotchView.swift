@@ -211,9 +211,6 @@ struct DynamicNotchView: View {
     /// Draws nothing over the camera housing once it has fully shrunk back.
     @State private var isIdleSurfaceConcealed = true
 
-    /// Room around the surface for the Command Echo light to spread into.
-    private static let haloMargin: CGFloat = 22
-
     init(
         mediaManager: MediaManager,
         settings: AppSettings,
@@ -304,17 +301,6 @@ struct DynamicNotchView: View {
         )
     }
 
-    private var haloTint: Color {
-        if isCommandEchoVisible, case .notification(let item) = displayedEcho, settings.isVIP(item) {
-            return vipGold
-        }
-        return .white
-    }
-
-    private var showsHalo: Bool {
-        isCommandEchoVisible || isFileDropHUDVisible
-    }
-
     private func handleFileDrop(
         _ providers: [NSItemProvider],
         to target: FileDropTarget
@@ -334,38 +320,8 @@ struct DynamicNotchView: View {
         }
     }
 
-    /// A soft white light around the silhouette, like the reference HUD. It
-    /// sits outside the shape so the camera housing can't cut it in half.
-    private var commandEchoHalo: some View {
-        ZStack(alignment: .top) {
-            haloLayer(spread: 5).blur(radius: 11).opacity(0.75)
-            haloLayer(spread: 2).blur(radius: 3.5)
-        }
-        // Lay the light out at the surface's size and let it spill over.
-        // Its larger natural size would otherwise grow the root view past a
-        // margin-less window and AppKit would centre it, lifting the notch.
-        .frame(width: surfaceSize.width, height: surfaceSize.height, alignment: .top)
-        .opacity(showsHalo ? 1 : 0)
-        .animation(.easeOut(duration: 0.2), value: showsHalo)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-
-    /// The silhouette grown by `spread` on the sides and bottom, so the
-    /// brightest part of the blur sits right at the visible edge.
-    private func haloLayer(spread: CGFloat) -> some View {
-        notchShape
-            .fill(haloTint)
-            .frame(
-                width: surfaceSize.width + spread * 2,
-                height: surfaceSize.height + spread
-            )
-    }
-
     var body: some View {
         ZStack(alignment: .top) {
-            commandEchoHalo
-
             renderedSurface
                 .onContinuousHover(perform: handleContinuousHover)
                 .contextMenu { surfaceContextMenu }
@@ -4587,6 +4543,7 @@ struct DynamicNotchView: View {
         switch mediaManager.source {
         case .appleMusic: "music.note"
         case .spotify: "waveform"
+        case .youtubeMusic: "play.circle.fill"
         case .none: "hifispeaker.fill"
         }
     }
@@ -4595,6 +4552,7 @@ struct DynamicNotchView: View {
         switch mediaManager.source {
         case .appleMusic: "Music"
         case .spotify: "Spotify"
+        case .youtubeMusic: "YT Music"
         case .none: localized("Medya", "Media")
         }
     }
@@ -4605,6 +4563,8 @@ struct DynamicNotchView: View {
             localized("Music'te aç", "Open in Music")
         case .spotify:
             localized("Spotify'da aç", "Open in Spotify")
+        case .youtubeMusic:
+            localized("YouTube Music'i aç", "Open YouTube Music")
         case .none:
             localized("Medya uygulamasını aç", "Open media app")
         }
@@ -4803,6 +4763,11 @@ struct DynamicNotchView: View {
         .help(label)
     }
 
+    /// Shuffle and repeat: not every player lets them be set from outside.
+    private var canChangePlaybackMode: Bool {
+        mediaManager.hasActiveTrack && mediaManager.source.supportsShuffleAndRepeat
+    }
+
     private func compactPlaybackModeButton(
         height: CGFloat = 34,
         icon: String,
@@ -4820,8 +4785,8 @@ struct DynamicNotchView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!mediaManager.hasActiveTrack)
-        .opacity(mediaManager.hasActiveTrack ? 1 : 0.45)
+        .disabled(!canChangePlaybackMode)
+        .opacity(canChangePlaybackMode ? 1 : 0.3)
         .accessibilityLabel(Text(label))
         .accessibilityValue(
             Text(isActive ? localized("Açık", "On") : localized("Kapalı", "Off"))
@@ -5045,8 +5010,6 @@ struct DynamicNotchView: View {
     /// once the animation is over. Never animating the window keeps the
     /// notch attached to the top edge and avoids AppKit layout loops.
     private func resizeSurface(to target: CGSize, animation: Animation?) {
-        let margin = showsHalo ? Self.haloMargin : 0
-        windowMargin = max(windowMargin, margin)
         let envelope = CGSize(
             width: max(surfaceSize.width, target.width),
             height: max(surfaceSize.height, target.height)
@@ -5064,9 +5027,7 @@ struct DynamicNotchView: View {
         windowSettleTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 650_000_000)
             guard !Task.isCancelled else { return }
-            let settledMargin = showsHalo ? Self.haloMargin : 0
-            windowMargin = settledMargin
-            onPreferredSizeChange(windowSize(for: target, margin: settledMargin), false)
+            onPreferredSizeChange(windowSize(for: target, margin: windowMargin), false)
             isIdleSurfaceConcealed = true
         }
     }
@@ -5295,13 +5256,13 @@ struct DynamicNotchView: View {
     }
 
     private var trackTitle: String {
-        mediaManager.trackName.isEmpty ? "No Media" : mediaManager.trackName
+        mediaManager.trackName.isEmpty
+            ? localized("Çalan bir şey yok", "Nothing playing")
+            : mediaManager.trackName
     }
 
     private var artistTitle: String {
-        mediaManager.artistName.isEmpty
-            ? localized("Music veya Spotify'ı açın", "Open Music or Spotify")
-            : mediaManager.artistName
+        mediaManager.artistName
     }
 
     private func localized(_ turkish: String, _ english: String) -> String {
