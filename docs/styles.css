@@ -174,12 +174,15 @@ em {
 .site-notch[data-state="ready"] { --w: 404px; }
 .site-notch[data-state="countdown"],
 .site-notch[data-state="privacy"],
+.site-notch[data-state="agentwork"],
 .site-notch[data-state="download"] { --w: 292px; }
 .site-notch[data-state="timesup"],
 .site-notch[data-state="charging"] { --w: 404px; }
 .site-notch[data-state="meeting"],
 .site-notch[data-state="airpods"],
+.site-notch[data-state="agentdone"],
 .site-notch[data-state="downloaded"] { --w: 500px; }
+.site-notch[data-state="agent"] { --w: 480px; --h: 126px; --r: 26px; }
 .site-notch[data-state="notification"] { --w: 470px; --h: 84px; --r: 22px; }
 .site-notch[data-state="screenshot"] { --w: 480px; --h: 128px; --r: 26px; }
 .site-notch[data-state="drop"] { --w: 312px; --h: 140px; --r: 26px; }
@@ -196,6 +199,8 @@ em {
 .site-notch[data-state="notification"],
 .site-notch[data-state="drop"],
 .site-notch[data-state="screenshot"],
+.site-notch[data-state="agent"],
+.site-notch[data-state="agentdone"],
 .site-notch[data-state="downloaded"] {
   box-shadow:
     0 2px 6px rgba(255, 255, 255, 0.55),
@@ -240,6 +245,9 @@ em {
 .site-notch[data-state="screenshot"] .nl-screenshot,
 .site-notch[data-state="download"] .nl-download,
 .site-notch[data-state="downloaded"] .nl-downloaded,
+.site-notch[data-state="agentwork"] .nl-agentwork,
+.site-notch[data-state="agent"] .nl-agent,
+.site-notch[data-state="agentdone"] .nl-agentdone,
 .site-notch[data-state="dash"] .nl-dash {
   opacity: 1;
   pointer-events: auto;
@@ -298,6 +306,7 @@ em {
    single-band HUDs for alerts — content in the wings, camera in between. */
 .nl-countdown,
 .nl-privacy,
+.nl-agentwork,
 .nl-download { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
 .cd-ring { position: relative; width: 21px; height: 21px; flex: none; }
 .cd-ring > svg:first-child { width: 100%; height: 100%; transform: rotate(-90deg); }
@@ -311,6 +320,7 @@ em {
 .nl-meeting,
 .nl-charging,
 .nl-airpods,
+.nl-agentdone,
 .nl-downloaded {
   display: flex;
   align-items: center;
@@ -873,6 +883,7 @@ h3 { margin: 0; font-size: 20px; letter-spacing: -0.02em; }
   display: none;
 }
 .dash[data-tab="home"] [data-pane="home"],
+.dash[data-tab="agents"] [data-pane="agents"],
 .dash[data-tab="notifications"] [data-pane="notifications"],
 .dash[data-tab="calendar"] [data-pane="calendar"],
 .dash[data-tab="timer"] [data-pane="timer"],
@@ -1847,6 +1858,8 @@ details p { margin: 0 0 20px; color: var(--muted); }
   .b-wide,
   .bento .b-card:last-child,
   .moment-grid .moment:last-child { grid-column: auto; }
+  .moment-wide { flex-direction: column; align-items: stretch; gap: 10px; }
+  .moment-wide .mini-stage { width: auto; }
   .menu-clock { display: none; }
   .hero { padding-top: 130px; }
   .tones { grid-template-columns: repeat(2, 1fr); }
@@ -1878,12 +1891,18 @@ details p { margin: 0 0 20px; color: var(--muted); }
   .site-notch[data-state="dash"] { --w: 360px; --h: 214px; }
   .site-notch[data-state="countdown"],
   .site-notch[data-state="privacy"],
+  .site-notch[data-state="agentwork"],
   .site-notch[data-state="download"] { --w: 176px; }
   .site-notch[data-state="timesup"],
   .site-notch[data-state="charging"] { --w: 252px; }
   .site-notch[data-state="meeting"],
   .site-notch[data-state="airpods"],
+  .site-notch[data-state="agentdone"],
   .site-notch[data-state="downloaded"] { --w: 340px; }
+  .site-notch[data-state="agent"] { --w: 346px; --h: 122px; --r: 22px; }
+  .nl-agent { padding: 0 12px; }
+  .nl-agent .ag-term { display: none; }
+  .nl-agentwork, .nl-agentdone { padding: 0 12px; }
   .site-notch[data-state="screenshot"] { --w: 346px; --h: 104px; --r: 22px; }
   .nl-timesup .nl-detail { display: none; }
   .nl-timesup, .nl-meeting, .nl-charging, .nl-airpods, .nl-downloaded { padding: 0 12px; font-size: 12px; }
@@ -1996,3 +2015,70 @@ details p { margin: 0 0 20px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) {
   .launch-sheet { transition: opacity 0.2s; transform: none; }
 }
+
+/* ---------------------------------------------------------------- Agents */
+
+.ag-spark { width: 16px; height: 16px; color: var(--accent); animation: ag-pulse 1.5s ease-in-out infinite; }
+@keyframes ag-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+.nl-agent { padding: 0 18px; display: flex; flex-direction: column; }
+.ag-lock { width: 13px; height: 13px; color: #ff9f0a; }
+.ag-cmd {
+  display: block;
+  padding: 6px 9px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.08);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ag-cmd b { font-family: var(--sans); font-size: 10px; font-weight: 700; color: rgba(255, 255, 255, 0.6); margin-right: 5px; }
+.ag-buttons { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.ag-buttons .dl-open,
+.ag-deny,
+.ag-term { height: 23px; padding: 0 13px; display: inline-flex; align-items: center; border: 0; border-radius: 12px; font: inherit; font-size: 10.5px; font-weight: 700; cursor: default; }
+.ag-deny { background: rgba(255, 255, 255, 0.14); color: #fff; font-weight: 600; }
+.ag-term { padding: 0 8px; color: rgba(255, 255, 255, 0.7); font-weight: 600; }
+button.dl-open, button.ag-deny { cursor: pointer; }
+.ag-done { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: #30d158; color: #000; flex: none; }
+.ag-done svg { width: 10px; height: 10px; }
+.site-notch[data-state="agentdone"] .ag-done { animation: pop-in 0.5s var(--spring) 0.2s both; }
+
+/* Home's side card: one line for the day, what matters now, four actions. */
+.side-line { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+.side-line strong { font-size: 12px; }
+.side-line .js-time { font-size: 11px; font-weight: 600; color: rgba(255, 255, 255, 0.5); font-variant-numeric: tabular-nums; }
+.side-line .wx { margin-left: auto; align-self: center; }
+.now-ico { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8px; background: rgba(var(--accent-rgb), 0.16); color: var(--accent); flex: none; }
+.now-ico svg { width: 12px; height: 12px; }
+.now-ico.wait { background: rgba(255, 159, 10, 0.16); color: #ff9f0a; }
+.qa-row { display: flex; gap: 6px; margin-top: auto; }
+.qa { flex: 1; height: 30px; display: grid; place-items: center; border-radius: 10px; background: rgba(255, 255, 255, 0.075); color: rgba(255, 255, 255, 0.8); }
+.qa svg { width: 12px; height: 12px; }
+
+/* The Agents tab */
+.ag-wait { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 10px; font-weight: 600; color: #ff9f0a; }
+.ag-wait i { width: 6px; height: 6px; border-radius: 50%; background: #ff9f0a; }
+.ag-wait[hidden], .ag-perm[hidden], .d-tab em[hidden] { display: none; }
+.ag-list { display: flex; flex-direction: column; gap: 6px; }
+.ag-perm { padding: 9px 10px 10px; border-radius: 12px; background: rgba(255, 159, 10, 0.1); box-shadow: inset 0 0 0 0.8px rgba(255, 159, 10, 0.35); }
+.ag-perm-head { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; font-size: 10.5px; }
+.ag-perm-head svg { width: 11px; height: 11px; color: #ff9f0a; }
+.ag-perm .ag-cmd { background: none; padding: 0; }
+.ag-row b i { font-style: normal; font-weight: 500; font-size: 9px; color: rgba(255, 255, 255, 0.4); margin-left: 4px; }
+
+/* The Agents card among the moments */
+.moment-wide { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 30px; }
+.moment-wide .mini-stage { flex: none; width: 52%; height: 190px; margin-bottom: 0; }
+.moment-copy { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.moment-copy .eyebrow { margin: 0; }
+.mini-notch.mn-agent { width: 82%; height: auto; align-self: flex-start; display: block; padding: 0 14px 12px; border-radius: 0 0 20px 20px; font-weight: 600; }
+.mn-agent-head { height: 32px; display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; }
+.mn-agent-head > span { display: flex; align-items: center; gap: 6px; }
+.mn-agent-head svg { width: 12px; height: 12px; color: #ff9f0a; }
+.mn-agent-head small { font-size: 9.5px; font-weight: 500; color: rgba(255, 255, 255, 0.5); }
+.mn-agent .dl-open { animation: ag-press 3.2s ease-in-out infinite; }
+@keyframes ag-press { 0%, 62%, 100% { transform: scale(1); } 70% { transform: scale(0.9); } 78% { transform: scale(1.04); } }

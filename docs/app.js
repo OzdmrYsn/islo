@@ -14,7 +14,8 @@ let language = 'tr';
 const copy = {
   tr: {
     captions: {
-      home: 'Ana: yeni şarkı kartı — sözler, tek tıkla ses çıkışı — yanında hava durumu ve sıradaki toplantın.',
+      home: 'Ana: şarkı kartı ve sözler; yanında şu an önemli olan ne varsa ve tek tıkla dört kısayol.',
+      agents: 'Ajanlar: Claude Code ve Codex oturumların; izin isteklerini buradan yanıtla.',
       notifications: 'Bildirimler: gelen her şey tek listede, uygulamaya göre filtrelenir.',
       calendar: 'Takvim: bu hafta ve gerçek etkinliklerin; video görüşmelerine tek tıkla katıl.',
       timer: 'Zamanlayıcı: kadranı çevir ya da −/+ ile istediğin süre; sağda bugünkü odağın.',
@@ -26,7 +27,8 @@ const copy = {
   },
   en: {
     captions: {
-      home: 'Home: the new song card — lyrics, one-click audio output — with the weather and your next meeting beside it.',
+      home: 'Home: the song card and its lyrics, with whatever matters right now beside it and four one-click actions.',
+      agents: 'Agents: your Claude Code and Codex sessions; answer their permission requests here.',
       notifications: 'Notifications: everything that arrived, filtered by app.',
       calendar: 'Calendar: this week and your real events; join video calls in one click.',
       timer: 'Timer: turn the dial or use −/+ for any length; today’s focus on the right.',
@@ -102,6 +104,7 @@ function refreshDates() {
   const time = clock(now);
   $$('.js-time, .js-clock').forEach((el) => { el.textContent = time; });
   $$('.js-weekday').forEach((el) => { el.textContent = fmt({ weekday: 'long' }).toLocaleUpperCase(locale()); });
+  $$('.js-weekday-short').forEach((el) => { el.textContent = fmt({ weekday: 'short' }).replace('.', '').toLocaleUpperCase(locale()); });
   $$('.js-date').forEach((el) => { el.textContent = fmt({ day: 'numeric', month: 'short' }); });
   $$('.js-day').forEach((el) => { el.textContent = fmt({ day: 'numeric' }); });
   $$('.js-monthyear').forEach((el) => { el.textContent = fmt({ month: 'long', year: 'numeric' }); });
@@ -289,6 +292,9 @@ const story = [
   ['music', 1400],
   ['screenshot', 3800],
   ['meeting', 3600],
+  ['agentwork', 2000],
+  ['agent', 3800],
+  ['agentdone', 2800],
   ['download', 2600],
   ['downloaded', 3000],
   ['charging', 2600],
@@ -298,10 +304,11 @@ const story = [
   ['music', 2000]
 ];
 
-const flashDurations = { notification: 4200, meeting: 4200, airpods: 3600, timesup: 3000, screenshot: 4400, downloaded: 3400 };
+const flashDurations = { notification: 4200, meeting: 4200, airpods: 3600, timesup: 3000, screenshot: 4400, downloaded: 3400, agent: 4200, agentdone: 3200 };
 const sequences = {
   devices: [['charging', 2600], ['airpods', 3200]],
-  downloads: [['download', 2600], ['downloaded', 3400]]
+  downloads: [['download', 2600], ['downloaded', 3400]],
+  agents: [['agentwork', 2200], ['agent', 4200], ['agentwork', 1400], ['agentdone', 3400]]
 };
 
 function stopStory() {
@@ -959,3 +966,41 @@ if (launchSheet) {
     if (event.key === 'Escape' && !launchSheet.hidden) hideSheet();
   });
 }
+
+/* ---------------------------------------------------------------- Agents */
+
+/* The working agent's clock runs for real, wherever it is shown. */
+let agentSeconds = 42;
+setInterval(() => {
+  agentSeconds = agentSeconds >= 599 ? 30 : agentSeconds + 1;
+  const text = `${String(Math.floor(agentSeconds / 60)).padStart(2, '0')}:${String(agentSeconds % 60).padStart(2, '0')}`;
+  $$('.js-agent-clock').forEach((el) => { el.textContent = text; });
+}, 1000);
+
+/* Answering the request in the demo: the session goes back to work, and
+   the request returns after a while so the next visitor of the tab sees it. */
+function answerAgent(allowed) {
+  const perm = $('.js-agent-perm');
+  if (!perm || perm.hidden) return;
+  perm.hidden = true;
+  $('.js-agent-badge').hidden = true;
+  $('.js-agent-wait').hidden = true;
+  $('.js-agent-working').textContent = '2';
+  $('.js-agent-claude .now-ico').classList.remove('wait');
+  const state = $('.js-agent-claude-state');
+  state.dataset.tr = allowed ? 'Çalışıyor · izin verildi' : 'Çalışıyor · reddedildi';
+  state.dataset.en = allowed ? 'Working · allowed' : 'Working · denied';
+  state.textContent = language === 'tr' ? state.dataset.tr : state.dataset.en;
+  setTimeout(() => {
+    perm.hidden = false;
+    $('.js-agent-badge').hidden = false;
+    $('.js-agent-wait').hidden = false;
+    $('.js-agent-working').textContent = '1';
+    $('.js-agent-claude .now-ico').classList.add('wait');
+    state.dataset.tr = 'Seni bekliyor · Bash';
+    state.dataset.en = 'Waiting for you · Bash';
+    state.textContent = language === 'tr' ? state.dataset.tr : state.dataset.en;
+  }, 9000);
+}
+$('.js-agent-allow')?.addEventListener('click', () => { stopTour(); answerAgent(true); });
+$('.js-agent-deny')?.addEventListener('click', () => { stopTour(); answerAgent(false); });
