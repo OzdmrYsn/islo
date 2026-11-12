@@ -2082,3 +2082,11 @@ button.dl-open, button.ag-deny { cursor: pointer; }
 .mn-agent-head small { font-size: 9.5px; font-weight: 500; color: rgba(255, 255, 255, 0.5); }
 .mn-agent .dl-open { animation: ag-press 3.2s ease-in-out infinite; }
 @keyframes ag-press { 0%, 62%, 100% { transform: scale(1); } 70% { transform: scale(0.9); } 78% { transform: scale(1.04); } }
+
+/* Narrow screens: these come last so they win over the rules above. */
+@media (max-width: 640px) {
+  .moment-wide { flex-direction: column; align-items: stretch; gap: 10px; }
+  .moment-wide .mini-stage { width: auto; height: 170px; margin-bottom: 8px; }
+  .mini-notch.mn-agent { width: 88%; }
+  .nl-agent { padding: 0 12px; }
+}
