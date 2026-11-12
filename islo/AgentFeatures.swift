@@ -37,6 +37,15 @@ struct AgentPermission: Identifiable, Equatable {
     /// What it would do: the command, the file.
     let detail: String
     let date: Date
+    /// Questions the agent wants answered, each with its choices; empty
+    /// for an ordinary permission.
+    var questions: [AgentQuestion] = []
+}
+
+/// One question the agent asks, answered by picking a choice.
+struct AgentQuestion: Equatable {
+    let text: String
+    let options: [String]
 }
 
 struct AgentSession: Identifiable, Equatable {
@@ -82,9 +91,11 @@ final class AgentHub: ObservableObject {
 
     private var server: AgentSocketServer?
     private var responders: [String: AgentResponder] = [:]
+    /// The question tool's own input, handed back with the answers added.
+    private var questionInputs: [String: [String: Any]] = [:]
 
-    /// Tools whose prompt carries choices only the terminal can show.
-    private static let terminalOnlyTools: Set<String> = ["AskUserQuestion", "ExitPlanMode"]
+    /// Tools whose prompt only the terminal can show.
+    private static let terminalOnlyTools: Set<String> = ["ExitPlanMode"]
 
     var workingCount: Int { sessions.filter { $0.state == .working }.count }
     var waitingCount: Int { sessions.filter { $0.state == .waiting }.count }
@@ -112,8 +123,23 @@ final class AgentHub: ObservableObject {
 
     // MARK: Answers
 
+    /// Answers the agent's questions, one picked choice per question.
+    func answer(_ permission: AgentPermission, with choices: [String]) {
+        guard var input = questionInputs[permission.id], choices.count == permission.questions.count else { return }
+        var answers: [String: String] = [:]
+        for (question, choice) in zip(permission.questions, choices) { answers[question.text] = choice }
+        input["answers"] = answers
+        guard let data = try? JSONSerialization.data(withJSONObject: input), let json = String(data: data, encoding: .utf8) else { return }
+        finish(permission, reply: "answer " + json)
+    }
+
     func resolve(_ permission: AgentPermission, allow: Bool) {
-        responders.removeValue(forKey: permission.id)?.finish(allow ? "allow" : "deny")
+        finish(permission, reply: allow ? "allow" : "deny")
+    }
+
+    private func finish(_ permission: AgentPermission, reply: String) {
+        questionInputs.removeValue(forKey: permission.id)
+        responders.removeValue(forKey: permission.id)?.finish(reply)
         pending.removeAll { $0.id == permission.id }
         update(permission.sessionID) { session in
             session.state = .working
@@ -197,7 +223,19 @@ final class AgentHub: ObservableObject {
                 markWaiting(sessionID, note: tool)
                 return
             }
-            let permission = AgentPermission(
+            let input = payload["tool_input"] as? [String: Any] ?? [:]
+            var questions: [AgentQuestion] = []
+            if tool == "AskUserQuestion" {
+                questions = Self.questions(in: input)
+                // Several answers to one question, or nothing to pick from:
+                // that needs the terminal's own prompt.
+                guard !questions.isEmpty else {
+                    responder.finish(nil)
+                    markWaiting(sessionID, note: "")
+                    return
+                }
+            }
+            var permission = AgentPermission(
                 id: UUID().uuidString,
                 sessionID: sessionID,
                 source: source,
@@ -206,6 +244,8 @@ final class AgentHub: ObservableObject {
                 detail: Self.describe(tool: tool, input: payload["tool_input"] as? [String: Any] ?? [:]),
                 date: Date()
             )
+            permission.questions = questions
+            if !questions.isEmpty { questionInputs[permission.id] = input }
             responder.permissionID = permission.id
             responders[permission.id] = responder
             pending.append(permission)
@@ -221,6 +261,7 @@ final class AgentHub: ObservableObject {
     private func disconnected(_ responder: AgentResponder) {
         guard let id = responder.permissionID, responders.removeValue(forKey: id) != nil else { return }
         guard let permission = pending.first(where: { $0.id == id }) else { return }
+        questionInputs.removeValue(forKey: id)
         pending.removeAll { $0.id == id }
         update(permission.sessionID) { session in
             if session.state == .waiting { session.state = .working; session.since = Date(); session.note = "" }
@@ -235,6 +276,7 @@ final class AgentHub: ObservableObject {
 
     private func clearPending(for sessionID: String) {
         for permission in pending where permission.sessionID == sessionID {
+            questionInputs.removeValue(forKey: permission.id)
             responders.removeValue(forKey: permission.id)?.finish(nil)
         }
         pending.removeAll { $0.sessionID == sessionID }
@@ -261,6 +303,20 @@ final class AgentHub: ObservableObject {
     }
 
     // MARK: Reading a request
+
+    /// The questions of an AskUserQuestion call, when each is a single pick.
+    private static func questions(in input: [String: Any]) -> [AgentQuestion] {
+        guard let raw = input["questions"] as? [[String: Any]], !raw.isEmpty else { return [] }
+        var result: [AgentQuestion] = []
+        for item in raw {
+            guard item["multiSelect"] as? Bool != true,
+                  let text = item["question"] as? String,
+                  let options = (item["options"] as? [[String: Any]])?.compactMap({ $0["label"] as? String }),
+                  !options.isEmpty else { return [] }
+            result.append(AgentQuestion(text: text, options: options))
+        }
+        return result
+    }
 
     /// The one thing worth reading before saying yes.
     private static func describe(tool: String, input: [String: Any]) -> String {
@@ -311,6 +367,21 @@ final class AgentHub: ObservableObject {
             pending.append(permission)
             update(id) { $0.state = .waiting; $0.since = Date(); $0.note = "Bash" }
             onEvent?(.permission(permission))
+        case "question":
+            var permission = AgentPermission(
+                id: UUID().uuidString, sessionID: id, source: .claude, project: "islo", tool: "AskUserQuestion", detail: "", date: Date()
+            )
+            permission.questions = [
+                AgentQuestion(text: "Klasörün adı ne olsun?", options: ["islo", "İslo", "Aynı kalsın"]),
+                AgentQuestion(text: "Ne zaman yapayım?", options: ["Yayından sonra", "Hemen şimdi"])
+            ]
+            pending.append(permission)
+            update(id) { $0.state = .waiting; $0.since = Date(); $0.note = "" }
+            onEvent?(.permission(permission))
+        case "answer":
+            if let permission = pending.first(where: { !$0.questions.isEmpty }) {
+                answer(permission, with: permission.questions.map { $0.options[0] })
+            }
         case "allow", "deny":
             if let permission = pending.first { resolve(permission, allow: what == "allow") }
         default:
@@ -511,15 +582,26 @@ enum AgentHookCLI {
         // Codex holds its prompt back meanwhile, so it gets a shorter wait.
         var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
         guard poll(&descriptor, 1, source == "codex" ? 85_000 : 285_000) > 0 else { return }
-        var buffer = [UInt8](repeating: 0, count: 64)
-        let count = read(fd, &buffer, buffer.count)
-        guard count > 0 else { return }
-        let reply = String(decoding: buffer[0..<count], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        var received = Data()
+        var buffer = [UInt8](repeating: 0, count: 16_384)
+        while !received.contains(0x0A), received.count < 1_048_576 {
+            let count = read(fd, &buffer, buffer.count)
+            guard count > 0 else { break }
+            received.append(contentsOf: buffer[0..<count])
+        }
+        let reply = String(decoding: received, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         let decision: [String: Any]
-        switch reply {
-        case "allow": decision = ["behavior": "allow"]
-        case "deny": decision = ["behavior": "deny", "message": "Denied from the islo. notch", "interrupt": false]
-        default: return
+        if reply == "allow" {
+            decision = ["behavior": "allow"]
+        } else if reply == "deny" {
+            decision = ["behavior": "deny", "message": "Denied from the islo. notch", "interrupt": false]
+        } else if reply.hasPrefix("answer "),
+                  let input = try? JSONSerialization.jsonObject(with: Data(reply.dropFirst("answer ".count).utf8)) as? [String: Any] {
+            // A question answered in the notch: the tool's input comes back
+            // with the answers filled in.
+            decision = ["behavior": "allow", "updatedInput": input]
+        } else {
+            return
         }
         let output: [String: Any] = ["hookSpecificOutput": ["hookEventName": "PermissionRequest", "decision": decision]]
         if let data = try? JSONSerialization.data(withJSONObject: output) {

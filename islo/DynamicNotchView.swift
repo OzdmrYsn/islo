@@ -148,6 +148,10 @@ struct DynamicNotchView: View {
     @ObservedObject private var downloadMonitor = DownloadMonitor.shared
     @ObservedObject private var shortcutsManager = ShortcutsManager.shared
     @ObservedObject private var agentHub = AgentHub.shared
+    /// Choices picked so far for a question with several parts.
+    @State private var agentAnswers: [String: [String]] = [:]
+    /// Requests sent to the terminal; the notch stops offering them.
+    @State private var snoozedPermissions: Set<String> = []
     @AppStorage("dashboard.lyrics.visible") private var showsLyrics = false
     @State private var showsOutputPicker = false
 
@@ -505,7 +509,16 @@ struct DynamicNotchView: View {
         }
         // A request answered in the terminal takes its HUD with it.
         .onChange(of: agentHub.pending) { pending in
-            if isCommandEchoVisible, case .agentPermission(let shown) = displayedEcho, !pending.contains(shown) { dismissEcho() }
+            if isCommandEchoVisible, case .agentPermission(let shown) = displayedEcho, !pending.contains(where: { $0.id == shown.id }) { dismissEcho() }
+            agentAnswers = agentAnswers.filter { key, _ in pending.contains { $0.id == key } }
+        }
+        // A request stays in the notch until it is answered: whatever
+        // covered it, it comes back when the notch is free again.
+        .onChange(of: isCommandEchoVisible) { visible in
+            if !visible { reofferPermission() }
+        }
+        .onChange(of: presentation) { state in
+            if state == .idle { reofferPermission() }
         }
         .onChange(of: settings.dashboardNotificationsEnabled) { enabled in
             if !enabled, dashboardSection == .notifications { dashboardSection = .home }
@@ -2382,10 +2395,14 @@ struct DynamicNotchView: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            agentCommandText(permission)
-            HStack(spacing: 6) {
-                agentAnswerButtons(permission)
-                Spacer(minLength: 0)
+            if permission.questions.isEmpty {
+                agentCommandText(permission)
+                HStack(spacing: 6) {
+                    agentAnswerButtons(permission)
+                    Spacer(minLength: 0)
+                }
+            } else {
+                agentQuestionView(permission)
             }
         }
         .padding(10)
@@ -2437,8 +2454,7 @@ struct DynamicNotchView: View {
         }
         .buttonStyle(.plain)
         Button {
-            agentHub.focus(sessionID: permission.sessionID)
-            if isCommandEchoVisible { dismissEcho() }
+            sendToTerminal(permission)
         } label: {
             Text(localized("Terminalde aç", "Open terminal"))
                 .font(.system(size: 10.5, weight: .semibold))
@@ -2448,6 +2464,81 @@ struct DynamicNotchView: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+
+    /// The agent's question with its choices as buttons; a question in
+    /// several parts is asked one part at a time.
+    private func agentQuestionView(_ permission: AgentPermission) -> some View {
+        let picked = agentAnswers[permission.id] ?? []
+        let index = min(picked.count, permission.questions.count - 1)
+        let question = permission.questions[index]
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if permission.questions.count > 1 {
+                    Text("\(index + 1)/\(permission.questions.count)")
+                        .font(.system(size: 9.5, weight: .bold).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+                Text(question.text)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .help(question.text)
+            }
+            ScrollView(.horizontal) {
+                HStack(spacing: 6) {
+                    ForEach(Array(question.options.enumerated()), id: \.offset) { position, option in
+                        Button {
+                            let answers = picked + [option]
+                            if answers.count == permission.questions.count {
+                                agentHub.answer(permission, with: answers)
+                                if isCommandEchoVisible { dismissEcho() }
+                            } else {
+                                agentAnswers[permission.id] = answers
+                            }
+                        } label: {
+                            Text(option)
+                                .font(.system(size: 10.5, weight: position == 0 ? .bold : .semibold))
+                                .foregroundStyle(position == 0 ? Color.black : Color.white)
+                                .lineLimit(1)
+                                .padding(.horizontal, 12)
+                                .frame(height: 23)
+                                .background(Capsule().fill(position == 0 ? Color.white : Color.white.opacity(0.14)))
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Button { sendToTerminal(permission) } label: {
+                        Text(localized("Terminalde aç", "Open terminal"))
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .padding(.horizontal, 8)
+                            .frame(height: 23)
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .scrollIndicators(.never)
+        }
+    }
+
+    /// The user would rather answer where the agent runs.
+    private func sendToTerminal(_ permission: AgentPermission) {
+        snoozedPermissions.insert(permission.id)
+        agentHub.focus(sessionID: permission.sessionID)
+        if isCommandEchoVisible { dismissEcho() }
+    }
+
+    /// Puts the oldest unanswered request back in the closed notch.
+    private func reofferPermission() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            guard settings.agentsEnabled, presentation == .idle, !isCommandEchoVisible,
+                  let permission = agentHub.pending.first(where: { !snoozedPermissions.contains($0.id) }) else { return }
+            commandEchoManager.showAgent(.permission(permission))
+        }
     }
 
     private func agentStateText(_ session: AgentSession, now: Date) -> String {
@@ -2487,11 +2578,10 @@ struct DynamicNotchView: View {
     @ViewBuilder
     private var agentWingStatus: some View {
         if agentHub.waitingCount > 0 {
-            Text(localized("Bekliyor", "Waiting"))
-                .font(.system(size: 11, weight: .semibold))
+            // A word doesn't fit the wing; three dots say "your turn".
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .heavy))
                 .foregroundStyle(Color.orange)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
         } else if let session = agentHub.sessions.first(where: { $0.state == .working }) {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 let elapsed = max(0, Int(context.date.timeIntervalSince(session.since)))
@@ -2584,13 +2674,17 @@ struct DynamicNotchView: View {
             .frame(height: layout.hasCameraHousing ? layout.notchBandHeight : 34)
 
             VStack(alignment: .leading, spacing: 8) {
-                agentCommandText(permission)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.white.opacity(0.08)))
-                HStack(spacing: 6) {
-                    agentAnswerButtons(permission)
-                    Spacer(minLength: 0)
+                if permission.questions.isEmpty {
+                    agentCommandText(permission)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color.white.opacity(0.08)))
+                    HStack(spacing: 6) {
+                        agentAnswerButtons(permission)
+                        Spacer(minLength: 0)
+                    }
+                } else {
+                    agentQuestionView(permission)
                 }
             }
             .padding(.horizontal, 16)
@@ -4246,7 +4340,10 @@ struct DynamicNotchView: View {
         case .rain(let outlook): rainStartText(outlook)
         case .agentFinished(let session): localized("\(session.source.name) bitirdi", "\(session.source.name) finished")
         case .agentWaiting(let session): localized("\(session.source.name) seni bekliyor", "\(session.source.name) is waiting for you")
-        case .agentPermission(let permission): localized("\(permission.source.name) izin istiyor", "\(permission.source.name) asks permission")
+        case .agentPermission(let permission):
+            permission.questions.isEmpty
+                ? localized("\(permission.source.name) izin istiyor", "\(permission.source.name) asks permission")
+                : localized("\(permission.source.name) soruyor", "\(permission.source.name) asks")
         case .updateAvailable(let version): localized("islo. \(version) hazır", "islo. \(version) is ready")
         case .upcomingEvent(let event): event.title
         case .headphones(let battery): battery.name
@@ -4359,7 +4456,7 @@ struct DynamicNotchView: View {
         case .updateAvailable: duration = 9
         case .agentWaiting: duration = 9
         // Stays while the agent waits; a click or the terminal ends it.
-        case .agentPermission: duration = 60
+        case .agentPermission: duration = 3_600
         case .screenshot: duration = 3.2
         case .trackChanged: duration = settings.trackChangeDisplayDuration
         default: duration = 1.45
