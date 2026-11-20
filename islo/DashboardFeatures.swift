@@ -39,6 +39,8 @@ enum CommandEchoKind: Equatable {
     case mediaSkip(MediaSkipDirection)
     case trackChanged(String, MediaSkipDirection?)
     case notification(CapturedNotification)
+    /// A call or an AirDrop asking for an answer, with its buttons.
+    case request(CapturedNotification)
     case rain(RainOutlook)
     case agentFinished(AgentSession)
     case agentWaiting(AgentSession)
@@ -58,6 +60,7 @@ enum CommandEchoKind: Equatable {
         case .mediaSkip(let direction): direction.symbolName
         case .trackChanged(_, let direction): direction?.symbolName ?? "music.note"
         case .notification: "bell.fill"
+        case .request(let item): item.requestSymbolName
         case .rain: "cloud.rain.fill"
         case .agentFinished: "checkmark.circle.fill"
         case .agentWaiting: "hand.raised.fill"
@@ -87,6 +90,8 @@ enum CommandEchoKind: Equatable {
     /// must not replace while they're on screen.
     var isImportant: Bool {
         switch self {
+        // A call in progress steps aside for the volume keys and comes back.
+        case .request(let item): !item.isOngoingCall
         case .notification, .upcomingEvent, .timerFinished, .headphones, .privacy, .power,
              .screenshotPreview, .downloadFinished, .rain, .agentFinished, .agentWaiting, .agentPermission, .updateAvailable: true
         case .volume, .brightness, .copied, .pasted, .screenshot, .capsLock, .mediaSkip, .trackChanged: false
@@ -174,6 +179,10 @@ final class CommandEchoManager: ObservableObject {
 
     func showUpcomingEvent(_ event: CalendarEventInfo) {
         publish(.upcomingEvent(event))
+    }
+
+    func showRequest(_ item: CapturedNotification) {
+        publish(.request(item))
     }
 
     func showUpdateAvailable(_ version: String) {
@@ -858,10 +867,36 @@ final class SystemBannerHider {
         set { locked { muted = newValue } }
     }
 
+    private var held: Set<String> = []
+
+    /// Banners the notch is answering for macOS (a ringing call, an
+    /// AirDrop): they wait for an answer, but in the notch, so they stay
+    /// off screen however long that takes.
+    var heldBanners: Set<String> {
+        get { locked { held } }
+        set { locked { held = newValue } }
+    }
+
+    private var shown: Set<String> = []
+
+    /// Banners only macOS can handle right now (a call in progress whose
+    /// controls the notch can't reach): they stay on screen.
+    var shownBanners: Set<String> {
+        get { locked { shown } }
+        set { locked { shown = newValue } }
+    }
+
     private var firstSeen: [String: Date] = [:]
     private var moved: (window: AXUIElement, original: CGPoint)?
 
-    func update(window: AXUIElement, keys: [String], appNames: [String], unreadable: Int, isCenterOpen: Bool) {
+    func update(
+        window: AXUIElement,
+        keys: [String],
+        identifiers: [String],
+        appNames: [String],
+        unreadable: Int,
+        isCenterOpen: Bool
+    ) {
         guard !isCenterOpen else {
             // macOS normally moves the window back itself to show its
             // panel; make sure it's never left off screen.
@@ -882,16 +917,21 @@ final class SystemBannerHider {
         // would show it, so leave it until macOS closes the window.
         if keys.isEmpty && unreadable == 0 { return }
 
-        let isWaiting = firstSeen.values.contains { now.timeIntervalSince($0) > Self.waitingAfter }
+        let heldNow = heldBanners
+        let heldKeys = Set(zip(keys, identifiers).filter { heldNow.contains($0.1) }.map(\.0))
+        let isWaiting = firstSeen.contains {
+            !heldKeys.contains($0.key) && now.timeIntervalSince($0.value) > Self.waitingAfter
+        }
         // Apps the notch leaves to macOS keep macOS's banner.
         let hasMuted = !mutedApps.isDisjoint(with: appNames)
+        let mustShow = !shownBanners.isDisjoint(with: identifiers)
         // Banners islo. couldn't read stay visible, as do alerts that wait
         // for an answer.
-        if unreadable > 0 || isWaiting || hasMuted {
+        if unreadable > 0 || isWaiting || hasMuted || mustShow {
             restore()
         } else if isAllowed {
             hide(window)
-        } else if !arrived.isEmpty {
+        } else if !arrived.isEmpty || !heldKeys.isEmpty {
             // The notch can't show this one (it's open or hidden), so let
             // macOS show it.
             restore()
@@ -946,6 +986,31 @@ extension String {
     }
 }
 
+/// A button macOS shows on a banner ("Accept", "Decline", "End"…).
+struct NotificationAction: Equatable, Hashable {
+    enum Role: Equatable, Hashable {
+        case accept, decline, end, mute, other
+    }
+
+    /// Its title, in the system's language.
+    let title: String
+    /// The Accessibility action that presses it; nil for a plain button,
+    /// which is found by its title.
+    let actionName: String?
+
+    var role: Role {
+        let lowered = title.lowercased()
+        func matches(_ words: [String]) -> Bool {
+            words.contains { lowered == $0 || lowered.hasPrefix($0 + " ") }
+        }
+        if matches(["kabul et", "kabul", "accept", "answer", "yanıtla", "katıl", "join"]) { return .accept }
+        if matches(["reddet", "decline", "geri çevir", "yoksay", "ignore"]) { return .decline }
+        if matches(["bitir", "end", "sonlandır", "aramayı bitir", "end call", "hang up"]) { return .end }
+        if matches(["sessiz", "sesi kapat", "sesi aç", "mute", "unmute", "sessize al"]) { return .mute }
+        return .other
+    }
+}
+
 /// A notification macOS showed as a banner, read through Accessibility.
 struct CapturedNotification: Identifiable, Equatable {
     let id: String
@@ -955,6 +1020,55 @@ struct CapturedNotification: Identifiable, Equatable {
     let subtitle: String
     let body: String
     let date: Date
+    /// The banner's identifier in Notification Center.
+    var bannerIdentifier = ""
+    /// The banner's own buttons, reachable while macOS keeps it up.
+    var actions: [NotificationAction] = []
+
+    enum RequestKind { case call, airDrop, other }
+
+    /// The banner macOS uses for a ringing or ongoing call, whether it
+    /// comes from the iPhone or over FaceTime.
+    static let callBannerIdentifier = "FACETIME_NOTIFICATION"
+
+    var isCallBanner: Bool { bannerIdentifier == Self.callBannerIdentifier }
+
+    var requestKind: RequestKind {
+        let name = appName.lowercased()
+        if name.contains("airdrop") { return .airDrop }
+        if isCallBanner || ["facetime", "telefon", "phone"].contains(name) { return .call }
+        return .other
+    }
+
+    func action(_ role: NotificationAction.Role) -> NotificationAction? {
+        actions.first { $0.role == role }
+    }
+
+    /// A call that was answered: it can be ended, no longer accepted. The
+    /// call banner with buttons but nothing to accept is one too, whatever
+    /// its buttons are called.
+    var isOngoingCall: Bool {
+        guard action(.accept) == nil else { return false }
+        return action(.end) != nil || (isCallBanner && !actions.isEmpty)
+    }
+
+    /// The call banner in its first moment, before macOS has filled in who
+    /// is calling and the buttons.
+    var isArrivingCall: Bool { isCallBanner && actions.isEmpty }
+
+    /// Something that waits for an answer: it can be accepted and declined,
+    /// or it is a call in progress.
+    var isRequest: Bool {
+        (action(.accept) != nil && action(.decline) != nil) || isOngoingCall
+    }
+
+    var requestSymbolName: String {
+        switch requestKind {
+        case .call: isOngoingCall ? "phone.fill" : "phone.arrow.down.left.fill"
+        case .airDrop: "dot.radiowaves.left.and.right"
+        case .other: "bell.badge.fill"
+        }
+    }
 
     /// The line to lead with: the title, or the body when there's no title.
     var headline: String { title.isEmpty ? body : title }
@@ -978,8 +1092,37 @@ final class NotificationMonitor: ObservableObject {
     /// Bumps once per notification worth announcing in the notch.
     @Published private(set) var announcementRevision = 0
     private(set) var latest: CapturedNotification?
+    /// A call or an AirDrop that is waiting for an answer right now, kept
+    /// current with its banner. Nil once macOS takes the banner away.
+    @Published private(set) var liveRequest: CapturedNotification?
+    /// Requests handed back to macOS's own banner.
+    /// Requests handed back to macOS's own banner, with the buttons each
+    /// had then. A banner that moves on (a call that gets answered) is a
+    /// new state and comes back to the notch.
+    private var releasedRequests: [String: [NotificationAction]] = [:]
+    private var pressed: (identifier: String, actions: [NotificationAction], action: NotificationAction, at: Date)? {
+        didSet {
+            let role = pressed?.action.role
+            if pendingRole != role { pendingRole = role }
+        }
+    }
+    /// The button just pressed, until its banner reacts (a call takes a
+    /// couple of seconds to connect).
+    @Published private(set) var pendingRole: NotificationAction.Role?
+    private var fastRescanScheduled = false
+    /// macOS starts the Phone app in the background the moment a call
+    /// reaches the Mac, a good two seconds before it has a banner up. That
+    /// is when the notch says a call is coming.
+    private var earlyCall: Date?
+    private var launchObserver: NSObjectProtocol?
+    private static let phoneBundleIdentifier = "com.apple.mobilephone"
+    /// The call banner as it goes from ringing to answered to gone.
+    private var callBanner: (since: Date, wasRequest: Bool, answeredHere: Bool, sawControls: Bool, loggedLive: Bool, lastButtons: Date)?
+    private var loggedActionApps: Set<String> = []
 
-    private let scanQueue = DispatchQueue(label: "islo.notifications", qos: .utility)
+    /// A ringing call is read here too, so it must not wait behind
+    /// background work.
+    private let scanQueue = DispatchQueue(label: "islo.notifications", qos: .userInitiated)
     private var timer: Timer?
     private var isScanning = false
     private var needsRescan = false
@@ -1006,10 +1149,22 @@ final class NotificationMonitor: ObservableObject {
                 [weak self] _ in
                 Task { @MainActor in self?.scheduleScan() }
             }
+            launchObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main
+            ) { [weak self] notification in
+                guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                      app.bundleIdentifier == Self.phoneBundleIdentifier else { return }
+                Task { @MainActor in self?.phoneAppLaunched(app) }
+            }
         } else {
             timer?.invalidate()
             timer = nil
             removeObserver()
+            if let launchObserver {
+                NSWorkspace.shared.notificationCenter.removeObserver(launchObserver)
+            }
+            launchObserver = nil
+            earlyCall = nil
         }
         updateHiding()
     }
@@ -1085,17 +1240,50 @@ final class NotificationMonitor: ObservableObject {
         NSWorkspace.shared.openApplication(at: url, configuration: configuration)
     }
 
+    /// Opened by the user, the Phone app comes to the front; started by
+    /// macOS for an incoming call, it stays in the background.
+    private func phoneAppLaunched(_ app: NSRunningApplication) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, self.timer != nil, !app.isTerminated, !app.isActive,
+                  NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier
+            else { return }
+            self.announceEarlyCall()
+        }
+    }
+
+    private func announceEarlyCall() {
+        guard liveRequest == nil, callBanner == nil, !mutedApps.contains("FaceTime") else { return }
+        notificationLog.notice("Phone started in the background: a call is arriving")
+        earlyCall = Date()
+        scheduleScan()
+    }
+
+    /// The call the Phone app's start gave away, before it has a banner.
+    private var arrivingCallPlaceholder: CapturedNotification {
+        CapturedNotification(
+            id: "call-arriving", appName: "FaceTime", bundleIdentifier: nil,
+            title: "", subtitle: "", body: "", date: earlyCall ?? .now,
+            bannerIdentifier: CapturedNotification.callBannerIdentifier
+        )
+    }
+
+    /// The process that draws the banners.
+    private var notificationCenterPID: pid_t? {
+        #if DEBUG
+        if let debugCenterPID { return debugCenterPID }
+        #endif
+        return NSRunningApplication.runningApplications(
+            withBundleIdentifier: "com.apple.notificationcenterui"
+        ).first?.processIdentifier
+    }
+
     private func scheduleScan() {
         guard timer != nil else { return }
         guard !isScanning else {
             needsRescan = true
             return
         }
-        guard AXIsProcessTrusted(),
-              let center = NSRunningApplication.runningApplications(
-                withBundleIdentifier: "com.apple.notificationcenterui"
-              ).first else { return }
-        let pid = center.processIdentifier
+        guard AXIsProcessTrusted(), let pid = notificationCenterPID else { return }
         if pid != observedProcess { installObserver(processIdentifier: pid) }
         isScanning = true
         let hider = hider
@@ -1156,6 +1344,8 @@ final class NotificationMonitor: ObservableObject {
             seenIdentifiers.removeFirst(seenIdentifiers.count - 400)
         }
 
+        trackRequest(in: scan)
+
         // Banners already on screen when monitoring starts aren't new, and
         // neither is the history the user sees in an open Notification Center.
         guard hasBaseline, !scan.isCenterOpen else {
@@ -1167,28 +1357,237 @@ final class NotificationMonitor: ObservableObject {
         guard !fresh.isEmpty, fresh.count <= 3 else { return }
 
         // Settings lists the apps that send notifications, muted ones too.
-        for name in Set(fresh.map(\.appName)) where !name.isEmpty {
+        for name in Set(fresh.filter { !$0.title.isEmpty || !$0.body.isEmpty }.map(\.appName)) where !name.isEmpty {
             AppSettings.shared.noteNotificationApp(name)
         }
-        let wanted = fresh.filter { !mutedApps.contains($0.appName) }
+        // The call banner is only ever a live request; a missed call gets
+        // its own notification from macOS afterwards.
+        let wanted = fresh.filter {
+            !mutedApps.contains($0.appName) && $0.id != CapturedNotification.callBannerIdentifier
+        }
         guard !wanted.isEmpty else { return }
 
-        let captured = wanted.map { banner in
-            CapturedNotification(
-                id: banner.key,
-                appName: banner.appName,
-                bundleIdentifier: Self.bundleIdentifier(forAppNamed: banner.appName),
-                title: banner.title,
-                subtitle: banner.subtitle,
-                body: banner.body,
-                date: .now
+        for banner in wanted where !banner.actions.isEmpty && !loggedActionApps.contains(banner.appName) {
+            loggedActionApps.insert(banner.appName)
+            let titles = banner.actions.map(\.title).joined(separator: ", ")
+            notificationLog.notice("Buttons on \(banner.appName, privacy: .public) notifications: \(titles, privacy: .public)")
+        }
+
+        let captured = wanted.map(Self.captured(from:))
+        // A call in progress is not a notification to keep; a request is
+        // listed (it may go unanswered) but announced by its own HUD.
+        let listed = captured.filter { !$0.isOngoingCall }
+        guard !listed.isEmpty else { return }
+        items.insert(contentsOf: listed.reversed(), at: 0)
+        items = Array(items.prefix(60))
+        unreadCount += listed.count
+        guard listed.contains(where: { !$0.isRequest }) else { return }
+        latest = items.first { !$0.isRequest }
+        announcementRevision &+= 1
+    }
+
+    private static func captured(from banner: RawBanner) -> CapturedNotification {
+        CapturedNotification(
+            id: banner.key,
+            appName: banner.appName,
+            bundleIdentifier: bundleIdentifier(forAppNamed: banner.appName),
+            title: banner.title,
+            subtitle: banner.subtitle,
+            body: banner.body,
+            date: Date().addingTimeInterval(-(banner.elapsed ?? 0)),
+            bannerIdentifier: banner.id,
+            actions: banner.actions
+        )
+    }
+
+    /// Follows the banner that waits for an answer: picks it up when it
+    /// appears, keeps its buttons current (a call that is answered swaps
+    /// Accept for End) and lets go when macOS removes it.
+    private func trackRequest(in scan: BannerScan) {
+        #if DEBUG
+        if debugRequestActive { return }
+        #endif
+        guard !scan.isCenterOpen else {
+            earlyCall = nil
+            setLiveRequest(nil)
+            return
+        }
+        let identifier = CapturedNotification.callBannerIdentifier
+        let present = Set(scan.banners.map(\.id))
+        releasedRequests = releasedRequests.filter { present.contains($0.key) }
+
+        let banners = scan.banners
+            .filter { !mutedApps.contains($0.appName) }
+            .map(Self.captured(from:))
+        // A banner given back to macOS returns to the notch once it has
+        // moved on to different buttons.
+        for banner in banners {
+            if let before = releasedRequests[banner.bannerIdentifier], before != banner.actions, !banner.actions.isEmpty {
+                releasedRequests[banner.bannerIdentifier] = nil
+            }
+        }
+        let candidates = banners.filter { $0.isRequest && releasedRequests[$0.bannerIdentifier] == nil }
+        var current = candidates.first { $0.bannerIdentifier == liveRequest?.bannerIdentifier }
+            ?? candidates.first
+
+        // The call banner is up before macOS has filled it in: the notch
+        // says a call is coming right away and gets the name and buttons
+        // a moment later.
+        if present.contains(identifier), callBanner == nil {
+            callBanner = (since: Date(), wasRequest: false, answeredHere: false, sawControls: false, loggedLive: false, lastButtons: Date())
+            notificationLog.notice("Call banner appeared")
+        }
+        if current == nil, let state = callBanner, !state.wasRequest, !state.answeredHere,
+           releasedRequests[identifier] == nil, Date().timeIntervalSince(state.since) < 3,
+           let arriving = banners.first(where: { $0.isArrivingCall }) {
+            current = arriving
+        }
+        // Earlier still: the Phone app has just been started for a call
+        // and the banner is on its way. Without one within a few seconds
+        // it was something else.
+        if let early = earlyCall {
+            if present.contains(identifier) || Date().timeIntervalSince(early) > 5 {
+                earlyCall = nil
+            } else if current == nil {
+                current = arrivingCallPlaceholder
+            }
+        }
+
+        // A press that changes nothing either didn't reach a banner that
+        // is off screen, or macOS wants more (a menu of where to save,
+        // say). Its own banner comes back and the press is repeated there.
+        // An answered call needs a few seconds to connect, so it gets them.
+        if let pressed, let request = current, request.bannerIdentifier == pressed.identifier {
+            let patience: TimeInterval = request.isCallBanner ? 8 : 2.5
+            if request.actions != pressed.actions {
+                self.pressed = nil
+            } else if Date().timeIntervalSince(pressed.at) > patience {
+                self.pressed = nil
+                releasedRequests[request.bannerIdentifier] = request.actions
+                current = nil
+                repeatOnScreen(pressed.action, onBanner: pressed.identifier)
+            }
+        }
+        // Keep the time the request first showed up (a call's length).
+        if let request = current, let live = liveRequest,
+           live.bannerIdentifier == request.bannerIdentifier,
+           live.isOngoingCall == request.isOngoingCall {
+            current = CapturedNotification(
+                id: request.id, appName: request.appName, bundleIdentifier: request.bundleIdentifier,
+                title: request.title, subtitle: request.subtitle, body: request.body,
+                date: live.date, bannerIdentifier: request.bannerIdentifier, actions: request.actions
             )
         }
-        items.insert(contentsOf: captured.reversed(), at: 0)
-        items = Array(items.prefix(60))
-        unreadCount += captured.count
-        latest = items.first
-        announcementRevision &+= 1
+        if current == nil { pressed = nil }
+        setLiveRequest(current)
+        followCallBanner(present: present, request: current)
+
+        // While a call is arriving or connecting, half a second between
+        // looks is long: look again right away.
+        if (current?.isArrivingCall == true || pressed != nil), !fastRescanScheduled {
+            fastRescanScheduled = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+                self?.fastRescanScheduled = false
+                self?.scheduleScan()
+            }
+        }
+    }
+
+    /// The call banner outlives its buttons: it rings, is answered, and
+    /// lingers a moment after the call. While the notch can answer for it,
+    /// it stays hidden; when it shows a call the notch has no buttons for
+    /// (answered, but macOS keeps the controls to itself), it has to be on
+    /// screen or there would be no way to hang up.
+    private func followCallBanner(present: Set<String>, request: CapturedNotification?) {
+        let identifier = CapturedNotification.callBannerIdentifier
+        guard present.contains(identifier), var state = callBanner else {
+            callBanner = nil
+            if !hider.shownBanners.isEmpty { hider.shownBanners = [] }
+            return
+        }
+        let isShownHere = request?.bannerIdentifier == identifier
+        let hasButtons = isShownHere && request?.actions.isEmpty == false
+        if hasButtons {
+            state.wasRequest = true
+            state.lastButtons = Date()
+            if !state.loggedLive {
+                state.loggedLive = true
+                let waited = String(format: "%.2f", Date().timeIntervalSince(state.since))
+                notificationLog.notice("Call buttons ready \(waited, privacy: .public) s after the banner")
+            }
+        }
+        // The notch had the call's own controls, so it never needs macOS's.
+        if hasButtons, request?.isOngoingCall == true { state.sawControls = true }
+        callBanner = state
+
+        let mustShow: Bool
+        if isShownHere {
+            mustShow = false
+        } else if releasedRequests[identifier] != nil {
+            mustShow = true
+        } else if state.answeredHere && !state.sawControls {
+            // Answered from the notch and the buttons are gone: unless
+            // that is only the banner changing over, macOS has the call.
+            mustShow = Date().timeIntervalSince(state.lastButtons) > 1.5
+        } else if !state.wasRequest {
+            // Never had buttons the notch could use: leave it to macOS.
+            mustShow = true
+        } else {
+            // Rang and stopped, or was hung up: it is on its way out.
+            mustShow = false
+        }
+        let shown: Set<String> = mustShow ? [identifier] : []
+        if hider.shownBanners != shown { hider.shownBanners = shown }
+    }
+
+    private func setLiveRequest(_ request: CapturedNotification?) {
+        hider.heldBanners = request.map { [$0.bannerIdentifier] } ?? []
+        if liveRequest != request { liveRequest = request }
+    }
+
+    /// Presses one of the request's buttons on macOS's banner.
+    func perform(_ action: NotificationAction, on request: CapturedNotification) {
+        #if DEBUG
+        if debugRequestActive {
+            debugRequest(action.role == .accept && request.requestKind == .call ? "answer" : "clear")
+            return
+        }
+        #endif
+        guard let pid = notificationCenterPID else { return }
+        // Muting changes nothing the notch can see; every other button
+        // should, and is handed to macOS if it doesn't.
+        if action.role != .mute {
+            pressed = (request.bannerIdentifier, request.actions, action, Date())
+        }
+        if request.isCallBanner, action.role == .accept { callBanner?.answeredHere = true }
+        let identifier = request.bannerIdentifier
+        scanQueue.async { [weak self] in
+            let done = Self.press(action, onBanner: identifier, processIdentifier: pid)
+            notificationLog.notice("Pressed \(action.title, privacy: .public): \(done, privacy: .public)")
+            Task { @MainActor in self?.scheduleScan() }
+        }
+    }
+
+    private func repeatOnScreen(_ action: NotificationAction, onBanner identifier: String) {
+        guard let pid = notificationCenterPID else { return }
+        let hider = hider
+        scanQueue.async {
+            hider.restore()
+            // Give the window a moment to be back in place.
+            Thread.sleep(forTimeInterval: 0.3)
+            let done = Self.press(action, onBanner: identifier, processIdentifier: pid)
+            notificationLog.notice("Pressed \(action.title, privacy: .public) again on screen: \(done, privacy: .public)")
+        }
+    }
+
+    /// Gives the request back to macOS's own banner.
+    func releaseRequest() {
+        guard let request = liveRequest else { return }
+        releasedRequests[request.bannerIdentifier] = request.actions
+        pressed = nil
+        setLiveRequest(nil)
+        let hider = hider
+        scanQueue.async { hider.restore() }
     }
 
     private static func bundleIdentifier(forAppNamed name: String) -> String? {
@@ -1211,6 +1610,9 @@ final class NotificationMonitor: ObservableObject {
         let title: String
         let subtitle: String
         let body: String
+        var actions: [NotificationAction] = []
+        /// How long a call has lasted, read from its banner.
+        var elapsed: TimeInterval?
 
         /// A stack keeps its identifier while new messages replace its top
         /// one (e.g. several WhatsApp messages from one chat), so the text
@@ -1239,6 +1641,7 @@ final class NotificationMonitor: ObservableObject {
             hider.update(
                 window: window,
                 keys: windowScan.banners.map(\.key),
+                identifiers: windowScan.banners.map(\.id),
                 appNames: windowScan.banners.map(\.appName),
                 unreadable: windowScan.unreadable.count,
                 isCenterOpen: windowScan.isCenterOpen
@@ -1299,6 +1702,42 @@ final class NotificationMonitor: ObservableObject {
                 body = parts[1]
             }
         }
+        let identifier = string(element, kAXIdentifierAttribute) ?? ""
+        if identifier == CapturedNotification.callBannerIdentifier {
+            // A call has no title or message fields: who is calling is the
+            // description of a plain element next to the buttons. Before
+            // macOS has filled it in, the banner is still a call.
+            let texts = looseTexts(in: element, depth: 0)
+            // "Name, from your iPhone", and once answered the length of
+            // the call after a dash: "Name, from your iPhone-0:42".
+            var line = texts.first ?? ""
+            var elapsed: TimeInterval?
+            if let range = line.range(of: #"\s*[-–—]\s*(\d+:)?\d{1,2}:\d{2}$"#, options: .regularExpression) {
+                let clock = line[range].filter { $0.isNumber || $0 == ":" }
+                elapsed = clock.split(separator: ":").reduce(0) { $0 * 60 + (TimeInterval($1) ?? 0) }
+                line.removeSubrange(range)
+            }
+            let parts = line
+                .components(separatedBy: CharacterSet(charactersIn: ",\n"))
+                .map { $0.withoutDirectionMarks }
+                .filter { !$0.isEmpty }
+            return RawBanner(
+                id: identifier,
+                appName: "FaceTime",
+                title: parts.first ?? "",
+                subtitle: "",
+                body: (parts.dropFirst() + texts.dropFirst()).joined(separator: " · "),
+                actions: actions(of: element),
+                elapsed: elapsed
+            )
+        }
+        if title.isEmpty && body.isEmpty {
+            // Some other banner built like the call's: take what it says
+            // from its plain elements rather than give up on it.
+            let texts = looseTexts(in: element, depth: 0)
+            title = texts.first ?? ""
+            body = texts.dropFirst().joined(separator: " · ")
+        }
         guard !(title.isEmpty && body.isEmpty) else { return nil }
 
         let leading = title.isEmpty ? body : title
@@ -1311,10 +1750,203 @@ final class NotificationMonitor: ObservableObject {
         appName = appName.withoutDirectionMarks
         var id = string(element, kAXIdentifierAttribute) ?? ""
         if id.isEmpty { id = appName }
-        return RawBanner(id: id, appName: appName, title: title, subtitle: subtitle, body: body)
+        return RawBanner(
+            id: id, appName: appName, title: title, subtitle: subtitle, body: body,
+            actions: actions(of: element)
+        )
+    }
+
+    /// Descriptions of the plain elements under a banner that has no named
+    /// text fields, leaving out its buttons and the caller's picture.
+    nonisolated private static func looseTexts(in element: AXUIElement, depth: Int) -> [String] {
+        guard depth < 6 else { return [] }
+        var found: [String] = []
+        for child in children(of: element) {
+            let role = string(child, kAXRoleAttribute) ?? ""
+            if buttonRoles.contains(role) || string(child, kAXIdentifierAttribute) == "AvatarView" { continue }
+            let text = (string(child, kAXValueAttribute) ?? string(child, kAXDescriptionAttribute) ?? "")
+                .withoutDirectionMarks
+            if !text.isEmpty {
+                found.append(text)
+            } else {
+                found += looseTexts(in: child, depth: depth + 1)
+            }
+        }
+        return found
+    }
+
+    nonisolated private static let buttonRoles: Set<String> = [
+        kAXButtonRole as String, kAXPopUpButtonRole as String,
+        kAXMenuButtonRole as String, kAXCheckBoxRole as String
+    ]
+
+    // MARK: Buttons
+
+    /// Buttons that belong to the banner itself, not to what it asks.
+    nonisolated private static let ignoredButtonTitles: Set<String> = [
+        "kapat", "close", "göster", "show", "seçenekler", "options", "temizle", "clear",
+        "tümünü temizle", "clear all", "tümünü sil", "sil", "delete", "delete all",
+        "ayrıntıları göster", "show details", "ayrıntıları gizle", "hide details",
+        "daha az göster", "show less", "gönder", "send"
+    ]
+
+    /// A banner's buttons: the ones macOS exposes as named actions (shown
+    /// on hover), then any drawn as plain buttons.
+    nonisolated private static func actions(of element: AXUIElement) -> [NotificationAction] {
+        var found = namedActions(of: element)
+        if found.isEmpty {
+            for child in children(of: element)
+            where (string(child, kAXSubroleAttribute) ?? "").hasPrefix("AXNotificationCenter") {
+                found = namedActions(of: child)
+                if !found.isEmpty { break }
+            }
+        }
+        var titles = Set(found.map { $0.title.lowercased() })
+        for button in buttons(in: element, depth: 0) {
+            let title = buttonTitle(button)
+            guard !title.isEmpty, !ignoredButtonTitles.contains(title.lowercased()),
+                  titles.insert(title.lowercased()).inserted else { continue }
+            // A button with a menu ("Decline" plus "Remind me later…")
+            // has its plain meaning as a named action of its own; pressing
+            // the button itself would open the menu instead.
+            let own = namedActions(of: button).first { $0.title.lowercased() == title.lowercased() }
+            found.append(NotificationAction(title: title, actionName: own?.actionName))
+        }
+        return found
+    }
+
+    nonisolated private static func actionNames(of element: AXUIElement) -> [String] {
+        var names: CFArray?
+        guard AXUIElementCopyActionNames(element, &names) == .success,
+              let list = names as? [String] else { return [] }
+        return list
+    }
+
+    nonisolated private static func namedActions(of element: AXUIElement) -> [NotificationAction] {
+        let list = actionNames(of: element)
+        return list.compactMap { name in
+            guard name.hasPrefix("Name:") else { return nil }
+            var described: CFString?
+            var title = ""
+            if AXUIElementCopyActionDescription(element, name as CFString, &described) == .success,
+               let described = described as String? {
+                title = described
+            }
+            if title.isEmpty || title == name {
+                title = String(name.dropFirst("Name:".count)).components(separatedBy: "\n").first ?? ""
+            }
+            title = title.withoutDirectionMarks
+            guard !title.isEmpty, !ignoredButtonTitles.contains(title.lowercased()) else { return nil }
+            return NotificationAction(title: title, actionName: name)
+        }
+    }
+
+    nonisolated private static func buttons(in element: AXUIElement, depth: Int) -> [AXUIElement] {
+        guard depth < 6 else { return [] }
+        var found: [AXUIElement] = []
+        for child in children(of: element) {
+            let role = string(child, kAXRoleAttribute) ?? ""
+            if buttonRoles.contains(role) {
+                found.append(child)
+            } else {
+                found += buttons(in: child, depth: depth + 1)
+            }
+        }
+        return found
+    }
+
+    nonisolated private static func buttonTitle(_ button: AXUIElement) -> String {
+        for attribute in [kAXTitleAttribute, kAXDescriptionAttribute] {
+            if let text = string(button, attribute)?.withoutDirectionMarks, !text.isEmpty { return text }
+        }
+        return ""
+    }
+
+    nonisolated private static func locateBanner(
+        identifier: String,
+        in element: AXUIElement,
+        depth: Int
+    ) -> AXUIElement? {
+        guard depth < 10 else { return nil }
+        if (string(element, kAXSubroleAttribute) ?? "").hasPrefix("AXNotificationCenter") {
+            return banner(from: element)?.id == identifier ? element : nil
+        }
+        for child in children(of: element) {
+            if let found = locateBanner(identifier: identifier, in: child, depth: depth + 1) { return found }
+        }
+        return nil
+    }
+
+    nonisolated private static func press(
+        _ action: NotificationAction,
+        onBanner identifier: String,
+        processIdentifier pid: pid_t
+    ) -> Bool {
+        let application = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(application, 0.5)
+        var banner: AXUIElement?
+        for window in children(of: application)
+        where string(window, kAXSubroleAttribute) == "AXSystemDialog" {
+            banner = locateBanner(identifier: identifier, in: window, depth: 0)
+            if banner != nil { break }
+        }
+        guard let banner else { return false }
+        // Notification Center answers "failure" for buttons it did press.
+        func done(_ result: AXError) -> Bool { result == .success || result == .failure }
+        let button = buttons(in: banner, depth: 0).first {
+            buttonTitle($0).lowercased() == action.title.lowercased()
+        }
+        if let name = action.actionName {
+            // The element that lists the action is the one to ask.
+            let holders = ([button].compactMap { $0 } + [banner] + children(of: banner))
+                .filter { actionNames(of: $0).contains(name) }
+            for holder in holders where done(AXUIElementPerformAction(holder, name as CFString)) {
+                return true
+            }
+            return false
+        }
+        guard let button else { return false }
+        return done(AXUIElementPerformAction(button, kAXPressAction as CFString))
     }
 
     #if DEBUG
+    private var debugRequestActive = false
+    /// Debug builds: read banners from a stand-in process instead of
+    /// Notification Center (0 goes back to the real one).
+    var debugCenterPID: pid_t? {
+        didSet { hasBaseline = false }
+    }
+
+    /// Debug builds: a pretend call or AirDrop ("call", "airdrop",
+    /// "answer", "clear").
+    func debugRequest(_ command: String) {
+        func make(_ app: String, _ title: String, _ body: String, _ buttons: [String]) -> CapturedNotification {
+            CapturedNotification(
+                id: "debug-request-\(buttons.joined())", appName: app, bundleIdentifier: nil,
+                title: title, subtitle: "", body: body, date: .now,
+                bannerIdentifier: "debug-request",
+                actions: buttons.map { NotificationAction(title: $0, actionName: nil) }
+            )
+        }
+        switch command {
+        case "early":
+            // What the Phone app's background start does.
+            announceEarlyCall()
+        case "call":
+            debugRequestActive = true
+            liveRequest = make("FaceTime", "Ahmet Yılmaz", "iPhone'unuzdan", ["Reddet", "Yanıtla"])
+        case "airdrop":
+            debugRequestActive = true
+            liveRequest = make("AirDrop", "AirDrop", "Elif'in iPhone'u size bir fotoğraf paylaşmak istiyor.", ["Reddet", "Kabul Et"])
+        case "answer":
+            debugRequestActive = true
+            liveRequest = make("FaceTime", "Ahmet Yılmaz", "iPhone'unuzdan", ["Sessiz", "Bitir"])
+        default:
+            debugRequestActive = false
+            liveRequest = nil
+        }
+    }
+
     /// Debug builds: a notification that arrived `age` seconds ago.
     func debugInject(age: TimeInterval = 0) {
         let item = CapturedNotification(

@@ -36,6 +36,7 @@ islo., medya kontrollerini ve günlük araçları MacBook'un kamera çentiğiyle
 - Kapalı çentikte indirme ilerlemesi (Safari, Chrome, AirDrop) ve Aç/Göster
 - Kısayollar sekmesi ve Pomodoro odak başlangıç/bitiş otomasyonları
 - Bildirimler için uygulama kuralları ve altın renkli VIP kişiler
+- iPhone'dan gelen aramayı çentikten yanıtlama ya da reddetme; arama sürerken süre, sessize alma ve kapatma
 - Bir saat içinde başlayacak yağmur için uyarı ve saatlik hava tahmini
 - Bildirimleri, Dosya Rafı'nı ve Pano'yu belli bir süre sonra otomatik temizleme (her sekmenin saat düğmesinden)
 - Eksik izinleri gösteren ve tek tıkla onaran İzinler sayfası
@@ -87,6 +88,7 @@ islo. is a SwiftUI + AppKit app that blends media controls and everyday utilitie
 - Download progress in the closed notch (Safari, Chrome, AirDrop) with Open/Show
 - A Shortcuts tab and Pomodoro focus start/end automations
 - App rules for notifications and VIP people shown in gold
+- Answer or decline a call from your iPhone in the notch; call length, mute and hang up while it lasts
 - An alert for rain starting within the hour, and an hourly forecast
 - Notifications, File Shelf and Clipboard that clear themselves after a set time (from each tab's clock)
 - A Permissions page that shows missing permissions and repairs them in one click

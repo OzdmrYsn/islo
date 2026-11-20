@@ -200,6 +200,8 @@ struct DynamicNotchView: View {
     @State private var pendingEventAlert: CalendarEventInfo?
     @State private var commandEchoTask: Task<Void, Never>?
     @State private var pendingSkipDirection: MediaSkipDirection?
+    /// The call or AirDrop the notch has already made room for.
+    @State private var announcedRequest: String?
     /// The visible silhouette. It animates inside a window that only ever
     /// jumps in size, so the notch always grows from the top edge.
     @State private var surfaceSize: CGSize = .zero
@@ -471,10 +473,41 @@ struct DynamicNotchView: View {
         // A request stays in the notch until it is answered: whatever
         // covered it, it comes back when the notch is free again.
         .onChange(of: isCommandEchoVisible) { visible in
-            if !visible { reofferPermission() }
+            if !visible {
+                reofferRequest()
+                reofferPermission()
+            }
         }
         .onChange(of: presentation) { state in
-            if state == .idle { reofferPermission() }
+            if state == .idle {
+                reofferRequest()
+                reofferPermission()
+            }
+        }
+        // A ringing call or an AirDrop: shown with its buttons for as long
+        // as macOS keeps its banner, and kept up to date with it.
+        .onReceive(notificationMonitor.$liveRequest) { request in
+            guard let request else {
+                announcedRequest = nil
+                if isCommandEchoVisible, case .request = displayedEcho { dismissEcho() }
+                return
+            }
+            guard settings.dashboardNotificationsEnabled else { return }
+            // A call that starts ringing takes the notch even from the open
+            // dashboard, once; opening the dashboard again during the call
+            // is the user's choice and is left alone.
+            let isNew = announcedRequest != request.bannerIdentifier
+            announcedRequest = request.bannerIdentifier
+            if presentation != .idle {
+                guard isNew else { return }
+                hoverTask?.cancel()
+                isPinned = false
+                setPresentation(.idle)
+                // As soon as the dashboard has let go of the notch.
+                DispatchQueue.main.async { commandEchoManager.showRequest(request) }
+                return
+            }
+            commandEchoManager.showRequest(request)
         }
         .onChange(of: settings.dashboardNotificationsEnabled) { enabled in
             if !enabled, dashboardSection == .notifications { dashboardSection = .home }
@@ -2488,6 +2521,15 @@ struct DynamicNotchView: View {
         if isCommandEchoVisible { dismissEcho() }
     }
 
+    /// A call or AirDrop still waiting returns once the notch is free.
+    private func reofferRequest() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            guard settings.dashboardNotificationsEnabled, presentation == .idle, !isCommandEchoVisible,
+                  let request = notificationMonitor.liveRequest else { return }
+            commandEchoManager.showRequest(request)
+        }
+    }
+
     /// Puts the oldest unanswered request back in the closed notch.
     private func reofferPermission() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
@@ -3588,6 +3630,8 @@ struct DynamicNotchView: View {
         Group {
             if case .notification(let item) = displayedEcho {
                 notificationHUD(item)
+            } else if case .request(let item) = displayedEcho {
+                requestHUD(item)
             } else if case .timerFinished = displayedEcho {
                 systemEchoHUD
                     .contentShape(Rectangle())
@@ -4087,6 +4131,236 @@ struct DynamicNotchView: View {
 
     private var vipGold: Color { Color(red: 1, green: 0.8, blue: 0.32) }
 
+    // MARK: Calls and AirDrop
+
+    private var answerGreen: Color { Color(red: 0.19, green: 0.82, blue: 0.35) }
+    private var declineRed: Color { Color(red: 1, green: 0.27, blue: 0.23) }
+
+    private func requestTitle(_ item: CapturedNotification) -> String {
+        switch item.requestKind {
+        case .call: item.isOngoingCall ? localized("Aramada", "On a call") : localized("Gelen arama", "Incoming call")
+        case .airDrop: "AirDrop"
+        case .other: item.appName
+        }
+    }
+
+    /// A call or an AirDrop that waits for an answer. Ringing: who it is
+    /// and the banner's own buttons. Answered: the caller, how long it has
+    /// lasted and a way to hang up, all in the band beside the camera.
+    @ViewBuilder
+    private func requestHUD(_ item: CapturedNotification) -> some View {
+        if item.isOngoingCall {
+            ongoingCallHUD(item)
+        } else {
+            ringingRequestHUD(item)
+        }
+    }
+
+    private func ringingRequestHUD(_ item: CapturedNotification) -> some View {
+        let tint: Color = item.requestKind == .call ? answerGreen : accent
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 0) {
+                HStack(spacing: 7) {
+                    Image(systemName: item.requestSymbolName)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(tint)
+                    Text(requestTitle(item))
+                        .font(.system(size: 11, weight: .semibold))
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: layout.hasCameraHousing ? commandEchoWingWidth : .infinity, alignment: .leading)
+                if layout.hasCameraHousing {
+                    Color.clear.frame(width: layout.cameraHousingWidth).accessibilityHidden(true)
+                }
+                Button {
+                    notificationMonitor.releaseRequest()
+                } label: {
+                    Image(systemName: "rectangle.topthird.inset.filled")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .frame(width: 24, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(localized("macOS bildiriminde göster", "Show macOS's own banner"))
+                .accessibilityLabel(Text(localized("macOS bildiriminde göster", "Show macOS's own banner")))
+                .frame(maxWidth: layout.hasCameraHousing ? commandEchoWingWidth : .infinity, alignment: .trailing)
+            }
+            .padding(.horizontal, 18)
+            .frame(height: layout.hasCameraHousing ? layout.notchBandHeight : 40)
+
+            HStack(spacing: 10) {
+                // AirDrop's title only repeats its name; its message says
+                // who is sending what.
+                let repeatsName = item.title.isEmpty || item.title.lowercased() == item.appName.lowercased()
+                VStack(alignment: .leading, spacing: 2) {
+                    if item.isArrivingCall {
+                        Text(localized("Arama geliyor…", "Call coming in…"))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.75))
+                    } else if repeatsName {
+                        Text(item.body)
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text(item.title)
+                            .font(.system(size: 13, weight: .semibold))
+                            .lineLimit(1)
+                        if !item.detail.isEmpty {
+                            Text(item.detail)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.white.opacity(0.62))
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                Spacer(minLength: 6)
+                if item.isArrivingCall || notificationMonitor.pendingRole == .accept {
+                    // Before macOS has the buttons ready, and while an
+                    // answered call connects.
+                    HStack(spacing: 7) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .colorScheme(.dark)
+                        if notificationMonitor.pendingRole == .accept {
+                            Text(localized("Bağlanıyor…", "Connecting…"))
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.75))
+                        }
+                    }
+                } else {
+                    HStack(spacing: 6) {
+                        ForEach(requestButtons(item), id: \.self) { action in
+                            requestButton(action, on: item)
+                        }
+                    }
+                    .disabled(notificationMonitor.pendingRole != nil)
+                    .opacity(notificationMonitor.pendingRole != nil ? 0.5 : 1)
+                }
+            }
+            .padding(.horizontal, bodyPadding(18, gap: 16))
+            .frame(maxHeight: .infinity)
+            .padding(.bottom, 6)
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onHover(perform: echoHoverChanged)
+    }
+
+    /// Decline first, accept last (where the hand ends up); at most one
+    /// extra button the banner offers.
+    private func requestButtons(_ item: CapturedNotification) -> [NotificationAction] {
+        let extras = item.actions.filter { $0.role == .other }.prefix(1)
+        return [item.action(.decline)].compactMap { $0 } + extras + [item.action(.accept)].compactMap { $0 }
+    }
+
+    private func requestButton(_ action: NotificationAction, on item: CapturedNotification) -> some View {
+        let fill: Color = switch action.role {
+        case .accept: answerGreen
+        case .decline, .end: declineRed
+        case .mute, .other: Color.white.opacity(0.14)
+        }
+        return Button {
+            notificationMonitor.perform(action, on: item)
+        } label: {
+            Text(action.title)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .padding(.horizontal, 13)
+                .frame(height: 26)
+                .background(Capsule().fill(fill))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func ongoingCallHUD(_ item: CapturedNotification) -> some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 7) {
+                Image(systemName: "phone.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(answerGreen)
+                Text(item.headline)
+                    .font(.system(size: 11, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: layout.hasCameraHousing ? commandEchoWingWidth : .infinity, alignment: .leading)
+            if layout.hasCameraHousing {
+                Color.clear.frame(width: layout.cameraHousingWidth).accessibilityHidden(true)
+            }
+            HStack(spacing: 7) {
+                TimelineView(.periodic(from: item.date, by: 1)) { context in
+                    let elapsed = max(0, Int(context.date.timeIntervalSince(item.date)))
+                    Text(String(format: "%02d:%02d", elapsed / 60, elapsed % 60))
+                        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(answerGreen)
+                }
+                if let mute = item.action(.mute) {
+                    // The button says what it would do next: "unmute"
+                    // means the microphone is off now.
+                    let isMuted = ["sesi aç", "unmute", "sessizden çıkar"].contains(mute.title.lowercased())
+                    callIconButton(
+                        isMuted ? "mic.slash.fill" : "mic.fill",
+                        fill: isMuted ? Color.white.opacity(0.9) : Color.white.opacity(0.16),
+                        glyph: isMuted ? .black : .white,
+                        label: mute.title
+                    ) {
+                        notificationMonitor.perform(mute, on: item)
+                    }
+                }
+                if let end = item.action(.end) {
+                    callIconButton("phone.down.fill", fill: declineRed, label: end.title) {
+                        notificationMonitor.perform(end, on: item)
+                    }
+                } else {
+                    // Buttons islo. doesn't know by name are offered as
+                    // macOS words them.
+                    ForEach(Array(item.actions.filter { $0.role != .mute }.prefix(2)), id: \.self) { action in
+                        Button {
+                            notificationMonitor.perform(action, on: item)
+                        } label: {
+                            Text(action.title)
+                                .font(.system(size: 9.5, weight: .bold))
+                                .lineLimit(1)
+                                .padding(.horizontal, 8)
+                                .frame(height: 21)
+                                .background(Capsule().fill(Color.white.opacity(0.16)))
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .frame(maxWidth: layout.hasCameraHousing ? commandEchoWingWidth : .infinity, alignment: .trailing)
+        }
+        .padding(.horizontal, 14)
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onHover(perform: echoHoverChanged)
+    }
+
+    private func callIconButton(
+        _ symbol: String,
+        fill: Color,
+        glyph: Color = .white,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 9.5, weight: .bold))
+                .foregroundStyle(glyph)
+                .frame(width: 30, height: 21)
+                .background(Capsule().fill(fill))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(label)
+        .accessibilityLabel(Text(label))
+    }
+
     private var systemEchoHUD: some View {
         Group {
             if layout.hasCameraHousing {
@@ -4274,7 +4548,7 @@ struct DynamicNotchView: View {
             switch event {
             case .pluggedIn(let level, _), .unplugged(let level), .low(let level): Double(level) / 100
             }
-        case .copied, .pasted, .screenshot, .capsLock, .mediaSkip, .trackChanged, .notification,
+        case .copied, .pasted, .screenshot, .capsLock, .mediaSkip, .trackChanged, .notification, .request,
              .timerFinished, .upcomingEvent, .headphones, .privacy, .screenshotPreview, .downloadFinished, .rain,
              .agentFinished, .agentWaiting, .agentPermission, .updateAvailable: nil
         }
@@ -4293,6 +4567,7 @@ struct DynamicNotchView: View {
             : localized("Önceki parça", "Previous track")
         case .trackChanged(let title, _): title
         case .notification(let item): item.appName
+        case .request(let item): requestTitle(item)
         case .rain(let outlook): rainStartText(outlook)
         case .agentFinished(let session): localized("\(session.source.name) bitirdi", "\(session.source.name) finished")
         case .agentWaiting(let session): localized("\(session.source.name) seni bekliyor", "\(session.source.name) is waiting for you")
@@ -4329,7 +4604,7 @@ struct DynamicNotchView: View {
         case .capsLock(let enabled): enabled ? localized("Açık", "On") : localized("Kapalı", "Off")
         case .mediaSkip: localized("Parça değiştiriliyor", "Changing track")
         case .trackChanged: artistTitle
-        case .notification(let item): item.headline
+        case .notification(let item), .request(let item): item.headline
         case .rain: localized("Şemsiyeni al", "Take an umbrella")
         case .agentFinished(let session), .agentWaiting(let session): session.project
         case .agentPermission(let permission): permission.project
@@ -4360,7 +4635,7 @@ struct DynamicNotchView: View {
         let incoming = commandEchoManager.event
         let isAllowed: Bool
         switch incoming {
-        case .notification: isAllowed = settings.dashboardNotificationsEnabled
+        case .notification, .request: isAllowed = settings.dashboardNotificationsEnabled
         // The user set this countdown; always say when it ends.
         case .timerFinished: isAllowed = true
         case .upcomingEvent: isAllowed = settings.calendarEnabled && settings.calendarAlertsEnabled
@@ -4380,7 +4655,10 @@ struct DynamicNotchView: View {
         guard isAllowed, presentation == .idle else { return }
         // Volume, copy and the like never cover a notification, a meeting,
         // a finished timer or a device/privacy alert that is showing.
-        if isCommandEchoVisible, displayedEcho.isImportant, !incoming.isImportant { return }
+        // (A call that was just answered is the same HUD moving on.)
+        var continuesRequest = false
+        if case .request = displayedEcho, case .request = incoming { continuesRequest = true }
+        if isCommandEchoVisible, displayedEcho.isImportant, !incoming.isImportant, !continuesRequest { return }
         commandEchoTask?.cancel()
         // A HUD swapped out under the pointer never reports the hover
         // ending; the new one starts clean so it can dismiss itself.
@@ -4413,6 +4691,8 @@ struct DynamicNotchView: View {
         case .agentWaiting: duration = 9
         // Stays while the agent waits; a click or the terminal ends it.
         case .agentPermission: duration = 3_600
+        // Stays for as long as it rings, or the call lasts.
+        case .request: duration = 3_600
         case .screenshot: duration = 3.2
         case .trackChanged: duration = settings.trackChangeDisplayDuration
         default: duration = 1.45
@@ -4442,6 +4722,12 @@ struct DynamicNotchView: View {
 
     private func echoHoverChanged(_ hovering: Bool) {
         isEchoHovered = hovering
+        // A call, an AirDrop or an agent's request stays until it is
+        // answered; the pointer passing over it must not start its exit.
+        switch displayedEcho {
+        case .request, .agentPermission: return
+        default: break
+        }
         if hovering {
             commandEchoTask?.cancel()
         } else if isCommandEchoVisible {
@@ -4458,7 +4744,7 @@ struct DynamicNotchView: View {
     private var isInteractiveEchoVisible: Bool {
         guard isCommandEchoVisible else { return false }
         switch displayedEcho {
-        case .screenshotPreview, .downloadFinished, .upcomingEvent, .rain, .agentFinished, .agentWaiting, .agentPermission, .updateAvailable: return true
+        case .screenshotPreview, .downloadFinished, .upcomingEvent, .rain, .agentFinished, .agentWaiting, .agentPermission, .updateAvailable, .request: return true
         default: return false
         }
     }
@@ -5125,6 +5411,14 @@ struct DynamicNotchView: View {
                 : min(430, layout.screenWidth - 24)
             let height = (layout.hasCameraHousing ? layout.notchBandHeight : 34) + 56
             return CGSize(width: width, height: height)
+        }
+        if case .request(let item) = displayedEcho {
+            let width = layout.hasCameraHousing
+                ? min(max(layout.cameraHousingWidth + 380, 560), layout.screenWidth - 24)
+                : min(480, layout.screenWidth - 24)
+            let band: CGFloat = layout.hasCameraHousing ? layout.notchBandHeight : 40
+            // A call in progress only needs the band beside the camera.
+            return CGSize(width: width, height: item.isOngoingCall ? band : band + 52)
         }
         if case .agentPermission = displayedEcho {
             let width = layout.hasCameraHousing

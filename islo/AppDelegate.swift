@@ -695,6 +695,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case let command where command.hasPrefix("ytm-client:"):
             // Counts the named app's playback as YouTube Music.
             mediaManager?.debugSetYouTubeMusicClient(String(command.dropFirst("ytm-client:".count)))
+        case let command where command.hasPrefix("nc-pid:"):
+            let pid = pid_t(command.dropFirst("nc-pid:".count)) ?? 0
+            notificationMonitor.debugCenterPID = pid > 0 ? pid : nil
+        case let command where command.hasPrefix("request:"):
+            notificationMonitor.debugRequest(String(command.dropFirst("request:".count)))
         case "trackchange":
             commandEchoManager.showTrackChanged("Deneme şarkısı", direction: nil)
         case let command where command.hasPrefix("settings"):
