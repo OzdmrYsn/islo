@@ -3,6 +3,44 @@
     <channel>
         <title>islo.</title>
         <item>
+            <title>2.6.2</title>
+            <description><![CDATA[
+<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
+<h3>Türkçe</h3>
+<p>islo. 2.6.2 ile iPhone'una gelen arama çentikte.</p>
+<h4>Yenilikler</h4>
+<ul>
+<li><b>Gelen arama çentikte:</b> iPhone'un çaldığında Mac'in yanında beliren bildirim yerine çentik açılır; arayanı gösterir, Yanıtla ya da Reddet'e çentikten basarsın.</li>
+<li><b>Arama sürerken:</b> çentik ince bir şeride iner: arayan, geçen süre, mikrofonu kapatma ve aramayı bitirme düğmesi.</li>
+<li><b>Daha erken haber:</b> çentik, macOS kendi bildirimini hazırlamayı bitirmeden, arama Mac'e ulaşır ulaşmaz açılır.</li>
+</ul>
+<h4>İyileştirmeler</h4>
+<ul>
+<li>Yanıt bekleyen istekler (arama, ajan izni) işaretçi üzerinden geçince kaybolmuyor; yanıtlanana kadar yerinde kalıyor.</li>
+</ul>
+<p><i>Arama, Bildirimler özelliği açıkken ve Erişilebilirlik izni verilmişken çentikte gösterilir. Çentik paneli açıksa arama geldiğinde kapanıp aramayı gösterir. Düğmeler çentikten çalışmazsa macOS'un kendi bildirimi geri gelir.</i></p>
+<h3>English</h3>
+<p>islo. 2.6.2 brings calls to your iPhone into the notch.</p>
+<h4>New</h4>
+<ul>
+<li><b>Incoming calls in the notch:</b> when your iPhone rings, the notch opens instead of the banner at the side of the screen; it shows who is calling, and you answer or decline right there.</li>
+<li><b>During the call:</b> the notch settles into a thin strip: the caller, the time so far, mute and hang up.</li>
+<li><b>Sooner:</b> the notch opens as soon as the call reaches your Mac, before macOS has finished preparing its own banner.</li>
+</ul>
+<h4>Improvements</h4>
+<ul>
+<li>Requests that wait for an answer (a call, an agent's permission) no longer slip away when the pointer passes over them; they stay until answered.</li>
+</ul>
+<p><i>Calls show in the notch while Notifications is on and Accessibility access is granted. An open dashboard closes to show the call. If the buttons can't be reached from the notch, macOS's own banner comes back.</i></p>
+]]></description>
+            <pubDate>Fri, 20 Nov 2026 14:05:37 +0300</pubDate>
+            <link>https://github.com/OzdmrYsn/islo</link>
+            <sparkle:version>33</sparkle:version>
+            <sparkle:shortVersionString>2.6.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.6.2/islo-2.6.2.zip" length="7704870" type="application/octet-stream" sparkle:edSignature="3jCA43nmUOnmL14VR6slvwoMASjyVHCjsiNrmQ5Td4XWnz5dF08tnodI1ve2Xp7CkEGF8hEgUkzwcyK0B3qRCw=="/>
+        </item>
+        <item>
             <title>2.6.1</title>
             <description><![CDATA[
 <style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
@@ -97,70 +135,6 @@
             <sparkle:shortVersionString>2.6.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.6.0/islo-2.6.0.zip" length="7438412" type="application/octet-stream" sparkle:edSignature="hhCXU8mzP87Le31HEaZKKKOPb1ufVovUomL/LzL46iEiicTXjwY7plVYkEoZvm4+vLO4YongMnacAIkU7tTYBA=="/>
-        </item>
-        <item>
-            <title>2.5.5</title>
-            <description><![CDATA[
-<style>body{font:13px -apple-system,sans-serif;line-height:1.45}h3{margin:14px 0 4px}h4{margin:10px 0 2px}ul{padding-left:18px;margin:4px 0}</style>
-<h3>Türkçe</h3>
-<p>islo. 2.5.5 ile Ayarlar canlandı, ana sayfa işe yarar hâle geldi ve islo. çok daha az pil harcıyor.</p>
-<h4>Yenilikler</h4>
-<ul>
-<li><b>Canlı Ayarlar:</b> Ayarlar penceresinin üstünde artık bir çentik var ve neyi ayarlıyorsan onu oynuyor: bildirim, geri sayım, ses çubuğu, renk ve ton. Bir özelliği kapatınca çentik de kapanıyor.</li>
-<li><b>Altı sekme:</b> Uzun sol menü gitti. Uyarılar ve Araçlar sekmelerinde bütün özellikler anahtarlarıyla tek bakışta; birine tıklayınca seçenekleri yanında açılıyor.</li>
-<li><b>Ana sayfada "Şimdi":</b> Tarih kartının yerinde o an önemli olan iki şey var: çalışan zamanlayıcı, yaklaşan toplantı, süren indirme, okunmamış bildirim. Sakin bir günde saatlik hava durumu görünür.</li>
-<li><b>Hızlı eylemler:</b> Ana sayfadan tek tıkla zamanlayıcıyı başlat, Mac'i uyanık tut, ekran görüntüsü al ya da ekranı uyut.</li>
-<li><b>Pano anahtarı:</b> Pano geçmişinin Ayarlar'da kendi sayfası var; kapatınca islo. panoyu hiç okumaz.</li>
-</ul>
-<h4>İyileştirmeler</h4>
-<ul>
-<li><b>Daha az pil:</b> Müzik çalarken işlemci kullanımı yaklaşık %12'den %2'ye, boştayken %3'ten %1'in altına indi.</li>
-<li><b>Sekme çubuğu:</b> Uzun sekme adları ana sayfa düğmesini artık çentiğin köşesine itmiyor.</li>
-</ul>
-<h4>Düzeltmeler</h4>
-<ul>
-<li>Şarkı değişimi bildirimi artık Ayarlar'daki süre kadar kalıyor ve Command Echo kapalıyken de çalışıyor.</li>
-<li>⌥, ⇧ veya ⌃ ile basılan ses ve parlaklık tuşları yeniden macOS'e gidiyor; çentik tam ekranda gizliyken macOS'in kendi göstergesi görünüyor.</li>
-<li>Ekran takıp çıkardıktan sonra macOS bildirimi çentikle birlikte görünmüyor.</li>
-<li>Music ya da Spotify kapatılırken yeniden açılmıyor.</li>
-<li>İzinler sayfası Spotify'ın durumunu doğru gösteriyor.</li>
-<li>"İzin eksik" uyarısı yalnızca gerçekten gereken izinler için çıkıyor.</li>
-<li>Parola yöneticilerinin "geçici" olarak işaretlediği kopyalar pano geçmişine alınmıyor.</li>
-</ul>
-<p><i>İzinlerin bu güncellemede korunur.</i></p>
-<h3>English</h3>
-<p>islo. 2.5.5 brings Settings to life, makes Home useful and uses far less battery.</p>
-<h4>New</h4>
-<ul>
-<li><b>Live Settings:</b> The Settings window now has a notch at the top that acts out whatever you are setting: a notification, a countdown, the volume bar, colour and tone. Switch a feature off and the notch goes quiet too.</li>
-<li><b>Six tabs:</b> The long sidebar is gone. Alerts and Tools show every feature with its switch at a glance; click one and its options open beside it.</li>
-<li><b>"Now" on Home:</b> In place of the date card, the two things that matter right now: a running timer, a meeting coming up, a download, an unread notification. On a quiet day you get the hourly forecast.</li>
-<li><b>Quick actions:</b> From Home, one click starts the timer, keeps the Mac awake, takes a screenshot or puts the display to sleep.</li>
-<li><b>Clipboard switch:</b> Clipboard history has its own page in Settings; switched off, islo. doesn't read the clipboard at all.</li>
-</ul>
-<h4>Improvements</h4>
-<ul>
-<li><b>Less battery:</b> CPU use fell from about 12% to 2% while music plays, and from 3% to under 1% at rest.</li>
-<li><b>Tab row:</b> Long tab names no longer push the Home button into the notch's corner.</li>
-</ul>
-<h4>Fixes</h4>
-<ul>
-<li>The track-change notice now stays as long as Settings says, and works with Command Echo off.</li>
-<li>Volume and brightness keys pressed with ⌥, ⇧ or ⌃ go to macOS again; while the notch hides over a full-screen app, macOS shows its own indicator.</li>
-<li>After plugging or unplugging a display, the macOS banner no longer shows alongside the notch.</li>
-<li>Music and Spotify are no longer reopened as they quit.</li>
-<li>The Permissions page shows Spotify's state correctly.</li>
-<li>The "Permission missing" warning only appears for permissions that are actually needed.</li>
-<li>Copies that password managers mark as transient stay out of clipboard history.</li>
-</ul>
-<p><i>Your permissions are kept with this update.</i></p>
-]]></description>
-            <pubDate>Wed, 11 Nov 2026 19:00:38 +0300</pubDate>
-            <link>https://github.com/OzdmrYsn/islo</link>
-            <sparkle:version>30</sparkle:version>
-            <sparkle:shortVersionString>2.5.5</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/OzdmrYsn/islo/releases/download/v2.5.5/islo-2.5.5.zip" length="6837695" type="application/octet-stream" sparkle:edSignature="C9TBEI5wa76zgu7Ut2hfCj+qcnx4bdCRVTVSwq6C9BMl0vYv+jPq8Mm/ky6RLP1HD9xBedvtNAx028OEA5pbBA=="/>
         </item>
     </channel>
 </rss>
